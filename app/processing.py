@@ -1,4 +1,5 @@
 """签名文件校验、内存处理及独立导出；不依赖实验目录。"""
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import base64
 import io
 import os
@@ -39,17 +40,43 @@ class Session:
         if not result.getbbox():raise ValueError('未检测到有效签名笔画，请换图检查')
         result,report=sharpen(result,enabled=enhance)
         self.result=result
-        return dict(preview=preview(result),sharpen=report)
+        box=result.getbbox()
+        return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]])
 
-    def export(self, path, kind):
+    def dimensions(self, settings=None):
+        if self.result is None:raise ValueError('请先成功处理图片')
+        box=self.result.getbbox()
+        if not box:raise ValueError('没有有效笔画')
+        settings=settings or {'unit':'cm','width':1.1,'dpi':96}
+        if not isinstance(settings,dict):raise ValueError('无效尺寸设置')
+        def number(value):
+            try:n=Decimal(str(value))
+            except InvalidOperation:raise ValueError('尺寸和DPI必须为数字')
+            if not n.is_finite() or n<=0:raise ValueError('尺寸和DPI必须为正数')
+            return n
+        dpi=number(settings.get('dpi',96))
+        if not 1<=dpi<=2400:raise ValueError('DPI范围为1至2400')
+        unit=settings.get('unit','cm')
+        if unit not in {'cm','px'}:raise ValueError('无效单位')
+        width=number(settings.get('width',1.1))
+        height=settings.get('height')
+        height=number(height) if height is not None else width*Decimal(box[3]-box[1])/Decimal(box[2]-box[0])
+        factor=dpi/Decimal('2.54') if unit=='cm' else Decimal(1)
+        w=int((width*factor).quantize(Decimal(1),rounding=ROUND_HALF_UP))
+        h=int((height*factor).quantize(Decimal(1),rounding=ROUND_HALF_UP))
+        if min(w,h)<1 or max(w,h)>10000 or w*h>20_000_000:raise ValueError('输出需至少1px，单边不超过10000px，总量不超过2000万像素')
+        return dict(size=[w,h],dpi=float(dpi))
+
+    def export(self, path, kind, settings=None):
         if self.result is None:raise ValueError('请先成功处理图片')
         if kind not in {'png','gif'}:raise ValueError('不支持的导出格式')
         path=Path(path).with_suffix('.'+kind)
         if (self.source and path.resolve()==self.source) or (not self.source and path.name.casefold()==str(self.source_name).casefold()):raise ValueError('不能覆盖原始图片；请使用不同文件名')
         box=self.result.getbbox()
         if not box:raise ValueError('没有有效笔画')
-        im=self.result.crop(box);h=round(1.1/2.54*96);w=max(1,round(im.width*h/im.height))
-        im=im.resize((w,h),Image.Resampling.LANCZOS)
+        spec=self.dimensions(settings);w,h=spec['size']
+        content=ImageOps.contain(self.result.crop(box),(w,h),Image.Resampling.LANCZOS)
+        im=Image.new('RGBA',(w,h));im.alpha_composite(content,((w-content.width)//2,(h-content.height)//2))
         if kind=='gif':
             a=np.asarray(im)[...,3];mask=a>=128
             if not mask.any():raise ValueError('GIF转换后全透明；请保留PNG，不能导出有效GIF')
@@ -58,7 +85,7 @@ class Session:
         fd,temp=tempfile.mkstemp(dir=path.parent,suffix='.'+kind);os.close(fd)
         try:
             if kind=='gif':im.save(temp,format='GIF',transparency=0)
-            else:im.save(temp,format='PNG',dpi=(96,96))
+            else:im.save(temp,format='PNG',dpi=(spec['dpi'],spec['dpi']))
             with Image.open(temp) as check:
                 a=np.asarray(check.convert('RGBA'))[...,3]
                 if check.format!=kind.upper() or check.size!=(w,h) or not (a>0).any() or not (a==0).any():raise ValueError('导出重读检查失败：尺寸、格式、透明或笔画异常')

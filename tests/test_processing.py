@@ -24,7 +24,7 @@ class ProcessingTests(unittest.TestCase):
             with self.assertRaises(ValueError):s.export(p,'png')
             for kind in ['png','gif']:
                 target=Path(folder)/('签名.'+kind);r=s.export(target,kind)
-                self.assertEqual(r['size'][1],42)
+                self.assertEqual(r['size'][0],42)
                 with Image.open(target) as im:
                     a=np.asarray(im.convert('RGBA'))[...,3];self.assertTrue((a==0).any() and (a>0).any())
             self.assertEqual(before,p.read_bytes())
@@ -51,6 +51,25 @@ class ProcessingTests(unittest.TestCase):
             p=Path(folder)/'input.png';p.write_bytes(self.sample());out=Path(folder)/'baseline.png';v1.extract(p,out)
             s=Session();s.load(p.name,p.read_bytes());s.process(False)
             with Image.open(Path(folder)/'baseline_native.png') as im:self.assertTrue(np.array_equal(np.asarray(im),np.asarray(s.result)))
+
+    def test_dimensions_and_fixed_canvas(self):
+        s=Session();s.load('input.png',self.sample());s.process()
+        with tempfile.TemporaryDirectory() as folder:
+            for width,height,dpi,expected in [(1.6,1.6,96,[60,60]),(4,2.8,96,[151,106]),(4,4,96,[151,151]),(4,2.8,300,[472,331])]:
+                config=dict(unit='cm',width=width,height=height,dpi=dpi)
+                self.assertEqual(s.dimensions(config)['size'],expected)
+                for kind in ['png','gif']:
+                    r=s.export(Path(folder)/('out.'+kind),kind,config)
+                    self.assertEqual(r['size'],expected)
+                    with Image.open(Path(folder)/('out.'+kind)) as im:self.assertEqual(list(im.size),expected)
+            self.assertEqual(s.dimensions(dict(unit='px',width=42.5,height=20.5,dpi=96))['size'],[43,21])
+            for value in ['NaN',0,-1,'Infinity',100000]:
+                with self.assertRaises(ValueError):s.dimensions(dict(unit='px',width=value,height=20,dpi=96))
+            before=np.asarray(s.result).copy()
+            s.export(Path(folder)/'custom.png','png',dict(unit='px',width=100,height=200,dpi=96))
+            self.assertTrue(np.array_equal(before,np.asarray(s.result)))
+            with Image.open(Path(folder)/'custom.png') as im:
+                box=im.getbbox();self.assertLess(box[3]-box[1],100)
 
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()

@@ -1,3 +1,7 @@
+## 本轮修改：图像尺寸与导出面板
+修改app/processing.py：统一尺寸计算、可配置DPI及固定透明画布；app/window.py：预计尺寸桥接和导出设置参数；app/static/index.html/main.js/style.css：统一导出按钮和尺寸面板；tests/test_processing.py：新默认宽度及预设/自定义/无效尺寸回归；更新README及5份项目文档。未修改V1/V2或experiments，无依赖变更、无提交推送。
+
+## 历史记录
 ## 本轮黑签功能整合
 新增app/algorithm.py（适配V1内存核心）、sharpen.py（复用V2不含实验导出）、processing.py（校验/会话/PNG-GIF原子导出）、licenses/show7-MIT.txt；修改window.py桥接与依赖检查、static三文件业务交互及requirements图像依赖；新增tests/test_processing.py。更新README、PROGRESS、DECISIONS、BUGS、CHECK_REPORT与CHANGELOG。保留原型诊断及全部experiments，无提交推送。
 

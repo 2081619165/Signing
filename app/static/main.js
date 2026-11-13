@@ -30,16 +30,17 @@ marker.addEventListener('click', () => report('manual_marker', {at_ms:performanc
 document.addEventListener('visibilitychange', () => report('visibility', {state:document.visibilityState, at_ms:performance.now()}).catch(console.error));
 
 const openButton=document.getElementById('open'), processButton=document.getElementById('process');
-const pngButton=document.getElementById('png'),gifButton=document.getElementById('gif');
+const exportButton=document.getElementById('export');
 const original=document.getElementById('original'),processed=document.getElementById('processed');
 const workstatus=document.getElementById('workstatus');
 let busy=false,hasInput=false,hasResult=false;
 function updateControls(){
   openButton.disabled=!ready||busy;processButton.disabled=!ready||busy||!hasInput;
-  pngButton.disabled=!ready||busy||!hasResult;gifButton.disabled=pngButton.disabled;
+  exportButton.disabled=!ready||busy||!hasResult||!sizeValid;
+  document.querySelectorAll('.export-settings input,.export-settings select').forEach(e=>e.disabled=busy);
   document.getElementById('enhance').disabled=busy;
 }
-function clearResult(){hasResult=false;processed.removeAttribute('src');document.getElementById('pngstatus').textContent='未导出';document.getElementById('gifstatus').textContent='未导出';}
+function clearResult(){hasResult=false;processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
 async function task(action){
  if(busy||!ready)return;
  busy=true;updateControls();
@@ -56,11 +57,11 @@ openButton.addEventListener('click',()=>task(async()=>{
 processButton.addEventListener('click',()=>task(async()=>{
  clearResult();workstatus.textContent='正在提取，请稍候…';
  const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked));
- processed.src=r.preview;hasResult=true;workstatus.textContent='处理完成，可导出。锐化：'+r.sharpen.reason;
+ processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value==='signature')applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。锐化：'+r.sharpen.reason;
 }));
-for(const kind of ['png','gif'])document.getElementById(kind).addEventListener('click',()=>task(async()=>{
- const label=document.getElementById(kind+'status');label.textContent='等待保存…';
- try{const r=check(await window.pywebview.api.export_image(kind));label.textContent=r.cancelled?'已取消':('成功：'+r.size.join('×')+' px');}
+exportButton.addEventListener('click',()=>task(async()=>{
+ const label=document.getElementById('exportstatus');label.textContent='等待保存…';
+ try{const r=check(await window.pywebview.api.export_image(document.getElementById('format').value,settings()));label.textContent=r.cancelled?'已取消':('成功：'+r.size.join('×')+' px');}
  catch(e){label.textContent='失败：'+String(e);throw e;}
 }));
 document.getElementById('white').addEventListener('change',e=>document.getElementById('resultbg').classList.toggle('checker',!e.target.checked));
@@ -77,3 +78,43 @@ document.getElementById('dropzone').addEventListener('drop',e=>{
   accept(await window.pywebview.api.import_image(file.name,encoded));
  });
 });
+
+const preset=document.getElementById('preset'),unit=document.getElementById('unit');
+const widthInput=document.getElementById('width'),heightInput=document.getElementById('height'),dpiInput=document.getElementById('dpi');
+let contentRatio=1,sizeValid=false,sizeVersion=0,estimateTimer;
+const setNumber=(el,n)=>el.value=Number(n.toPrecision(12));
+function settings(){return {unit:unit.value,width:widthInput.value,height:heightInput.value,dpi:dpiInput.value};}
+function applyPreset(){
+ const sizes={signature:[1.1,1.1/contentRatio],legal:[1.6,1.6],builder:[4,2.8],official:[4,4]};
+ if(!sizes[preset.value])return;
+ const f=unit.value==='cm'?1:Number(dpiInput.value)/2.54;
+ setNumber(widthInput,sizes[preset.value][0]*f);setNumber(heightInput,sizes[preset.value][1]*f);
+ document.getElementById('ratio').checked=true;
+}
+function scheduleEstimate(){
+ sizeValid=false;const version=++sizeVersion;clearTimeout(estimateTimer);
+ if(!hasResult)return;
+ document.getElementById('estimated').textContent='正在计算…';updateControls();
+ estimateTimer=setTimeout(async()=>{
+  try{const r=check(await window.pywebview.api.estimate_size(settings()));if(version!==sizeVersion)return;sizeValid=true;document.getElementById('estimated').textContent='预计输出：'+r.size.join(' × ')+' px';}
+  catch(e){if(version!==sizeVersion)return;document.getElementById('estimated').textContent='尺寸无效：'+String(e);}
+  updateControls();
+ },180);
+}
+preset.addEventListener('change',()=>{applyPreset();scheduleEstimate();});
+unit.addEventListener('change',()=>{
+ const f=unit.value==='px'?Number(dpiInput.value)/2.54:2.54/Number(dpiInput.value);
+ for(const el of [widthInput,heightInput])if(Number(el.value)>0)setNumber(el,Number(el.value)*f);
+ scheduleEstimate();
+});
+for(const el of [widthInput,heightInput])el.addEventListener('input',()=>{
+ preset.value='custom';
+ if(document.getElementById('ratio').checked&&Number(el.value)>0){
+  if(el===widthInput)setNumber(heightInput,Number(el.value)/contentRatio);
+  else setNumber(widthInput,Number(el.value)*contentRatio);
+ }
+ scheduleEstimate();
+});
+document.getElementById('ratio').addEventListener('change',e=>{if(e.target.checked){preset.value='custom';setNumber(heightInput,Number(widthInput.value)/contentRatio);}scheduleEstimate();});
+dpiInput.addEventListener('input',()=>{scheduleEstimate();});
+document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';});

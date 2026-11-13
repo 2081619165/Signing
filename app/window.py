@@ -75,7 +75,10 @@ class Bridge:
     def process_image(self, enhance=False):
         return self._run(lambda:self._session.process(bool(enhance)))
 
-    def export_image(self, kind):
+    def estimate_size(self, settings):
+        return self._run(lambda:self._session.dimensions(settings))
+
+    def export_image(self, kind, settings=None):
         def action():
             import webview
             if kind not in {'png','gif'}:raise ValueError('不支持的格式')
@@ -83,7 +86,7 @@ class Bridge:
             selected=self._window.create_file_dialog(webview.FileDialog.SAVE,save_filename='signature.'+kind,file_types=(kind.upper()+' (*.'+kind+')',))
             if not selected:return {'cancelled':True}
             target=selected if isinstance(selected,str) else selected[0]
-            return self._session.export(target,kind)
+            return self._session.export(target,kind,settings)
         return self._run(action)
 
 def runtime_versions():
