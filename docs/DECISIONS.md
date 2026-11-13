@@ -1,3 +1,10 @@
+# 本轮生效决策：PyWebView原型
+用户明确选择覆盖此前Tkinter建议。采用Python+PyWebView+静态HTML/CSS/JS；固定edgechromium，检测WebView2注册表与.NET release，记录实际renderer，发现非edgechromium关闭，不接受静默MSHTML成功。仅最小原型，不改变算法分层规划。
+Windows官方后端：edgechromium、已弃用mshtml、可选CEF；另可选Qt需额外依赖，本轮不安装。6.2.1实际winforms源码仍可能在条件不满足时选MSHTML，因此增加先决检查及实际后端记录。CEF/Qt不作为本轮降级方案。
+资源由Python读取并注入HTML内联，create_window(html=...)，start(http_server=False)，不用相对文件URL触发自动HTTP服务。保留原生标题栏，避免动画与透明合成。诊断只开放ping及固定事件上报，不开放算法/文件系统接口。
+依据：https://pywebview.flowrl.com/guide/web_engine.html 、https://pywebview.flowrl.com/api/ 、https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution 。系统组件仍需用户安装，注册表存在不是渲染成功保证。
+
+## 历史架构建议（Tkinter部分已被本轮替代）
 # 技术决策与整合规划
 2026-11-13：建议采用Python + OpenCV/NumPy/Pillow；GUI优先Tkinter/ttk，无Web框架及后台服务。Tkinter是Python的Tcl/Tk接口，分发时仍需包含对应运行库，不能宣称零体积。依据：https://docs.python.org/3/library/tkinter.html 。本轮不安装或创建GUI，不承诺EXE尺寸。
 

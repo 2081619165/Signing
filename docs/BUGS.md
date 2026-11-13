@@ -13,3 +13,9 @@
 |B10|未验证|依赖未正式锁定、无项目依赖声明、未完成干净Windows环境和完整依赖许可证核验。|
 
 第一阶段另有leopens淡红章3张GIF全透明；历史实验保留，不作为正式印章模块。V2 applied数组视图状态错误历史已修复。本轮只登记问题，不修改算法。
+
+## 原型新增限制
+- P01 待人工验证：实际黑屏、恢复冻结、启动速度、通信及关闭；本轮没有启动窗口，不能标通过。
+- P02 依赖：干净机器可能缺WebView2/.NET；--check可诊断并失败退出；仅支持Windows，未验证其他系统/32位环境。
+- P03 诊断：shown/loaded/visibility非真实像素绘制或GPU事件；JS初始化与Python时钟不同源，不给出系统首帧耗时。
+- P04 Git：本轮仓库已存在，master及origin可读，但默认git报dubious ownership；本轮仅用命令级safe.directory读取，未更改全局Git配置。

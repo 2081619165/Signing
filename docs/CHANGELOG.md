@@ -1,3 +1,9 @@
+## 本轮交付整理
+补充最新进度、发布授权及检查说明；按用户要求准备将最小窗口原型与相关文档提交到master并推送origin。不包含样本、日志、虚拟环境或V1/V2修改。
+
+# 本轮修改：最小窗口原型
+2026-11-13 新增app/main.py入口、window.py窗口与日志、static/index.html/style.css/main.js静态界面、requirements.txt原型依赖锁定。更新README及PROGRESS、DECISIONS、BUGS、CHECK_REPORT、CHANGELOG。未修改experiments、AGENTS或.gitignore；日志及.venv复用已有忽略目录。未打包/提交/推送。
+
 # 修改日志
 ## 2026-11-13 本轮审查与规划
 仅维护AGENTS、README和docs文档；去除跨文档重复报告，纠正当前输出为gray-v2，标记write_report停用与外部输入实际位置；登记功能矩阵、代码风险、Git状态、拟定四层架构和GUI顺序。未修改Python、未创建正式目录或GUI、未提交/推送。

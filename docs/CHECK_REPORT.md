@@ -1,3 +1,14 @@
+## 本轮提交前复核
+用户明确授权提交及推送。已核对master、origin地址、改动文件和依赖清单；git diff --check通过。仅暂存app源码与requirements及相关Markdown，排除.local-tests、.venv和缓存。未重复运行窗口性能测试，未把人工待验项改成通过。Git操作仅使用命令级safe.directory，不更改全局设置。
+
+# 本轮检查：PyWebView原型
+环境：Windows11 build26200、Python3.13.17；初始无pywebview/pythonnet，新建项目.venv并安装pywebview6.2.1/pythonnet3.2.1，依赖详见app/requirements.txt。最初受沙箱代理限制的pip查询失败，获得网络执行后安装成功。
+已验证：app/main.py --check成功；注册表WebView2 Runtime157.0.4341.46，pythonnet加载及.NET release检查成功；compileall通过；20线程写入JSONL并重新解析20条通过；桥接非法事件拒绝；HTML三资源内联替换和解析检查通过，无外部CDN。查阅官方文档及安装版winforms后端选择、窗口事件和资源加载源码。
+未验证：未启动窗口，不执行用户指定人工启动/恢复测试。JS语法/DOM实际执行、桥接、显示、原生标题栏行为、系统首帧、黑屏与GPU冻结均待人工确认；无窗口检查数据不作为启动性能结论。测试步骤及所有指标边界见README。
+Git：本轮.git已存在；默认读取报ownership问题；仅命令级safe.directory读取确认master、origin=https://github.com/2081619165/Signing.git。起始工作区干净，未修改任何全局Git配置。新增app及本轮文档是待提交改动；无自动提交推送。
+本轮仅新增app原型及维护文档；V1/V2代码未修改。静态页面没有图片输入或算法调用，无业务HTTP服务、Web框架或额外图像依赖。PyWebView传递安装Bottle，但本原型不启动服务器。最终视觉/性能一律待用户验收。
+
+## 上轮检查历史
 # 本轮检查报告
 2026-11-13 范围：只审查和维护文档，不运行图像算法、不更改Python源码、不开发GUI/EXE。
 
