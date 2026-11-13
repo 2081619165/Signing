@@ -1,4 +1,4 @@
-"""窗口和诊断桥接，不导入印签算法。"""
+"""窗口、诊断及异步业务桥接。"""
 import argparse
 import importlib.metadata
 import json
@@ -30,6 +30,8 @@ class Diagnostics:
 class Bridge:
     def __init__(self, diag):
         self._diag = diag
+        self._window = None
+        self._session = None
 
     def ping(self):
         return self._diag.record('python_ping')
@@ -40,6 +42,49 @@ class Bridge:
         if name not in allowed or not isinstance(metrics, dict):
             raise ValueError('无效诊断事件')
         return self._diag.record(name, browser=metrics)
+
+    def _run(self, action):
+        if self._session is None:
+            return {'ok':False,'error':'业务模块尚未就绪'}
+        if not self._session.lock.acquire(blocking=False):
+            return {'ok':False,'error':'正在处理，请稍候'}
+        try:
+            return {'ok':True, **action()}
+        except Exception as exc:
+            return {'ok':False,'error':str(exc)}
+        finally:
+            self._session.lock.release()
+
+    def choose_image(self):
+        def action():
+            import webview
+            self._session.original=None;self._session.result=None
+            selected=self._window.create_file_dialog(webview.FileDialog.OPEN,allow_multiple=False,file_types=('Images (*.png;*.jpg;*.jpeg)',))
+            if not selected:return {'cancelled':True}
+            p=Path(selected[0]);return self._session.load(p.name,p.read_bytes(),str(p))
+        return self._run(action)
+
+    def import_image(self, name, encoded):
+        def action():
+            import base64
+            self._session.original=None;self._session.result=None
+            if len(encoded)>42*1024*1024:raise ValueError('图片超过大小限制')
+            return self._session.load(name,base64.b64decode(encoded,validate=True))
+        return self._run(action)
+
+    def process_image(self, enhance=False):
+        return self._run(lambda:self._session.process(bool(enhance)))
+
+    def export_image(self, kind):
+        def action():
+            import webview
+            if kind not in {'png','gif'}:raise ValueError('不支持的格式')
+            if self._session.result is None:raise ValueError('请先处理图片')
+            selected=self._window.create_file_dialog(webview.FileDialog.SAVE,save_filename='signature.'+kind,file_types=(kind.upper()+' (*.'+kind+')',))
+            if not selected:return {'cancelled':True}
+            target=selected if isinstance(selected,str) else selected[0]
+            return self._session.export(target,kind)
+        return self._run(action)
 
 def runtime_versions():
     if sys.platform != 'win32':
@@ -84,6 +129,8 @@ def main(entry):
         diag.record('dotnet_release', release=release)
         if release < 394802: raise RuntimeError('需要.NET Framework 4.6.2或更高版本')
         if args.check:
+            import cv2, numpy, PIL
+            diag.record('image_dependencies', opencv=cv2.__version__, numpy=numpy.__version__, pillow=PIL.__version__)
             print('依赖检查完成；未创建窗口，渲染和黑屏尚未验证。')
             return 0
         assets = Path(__file__).parent / 'static'
@@ -91,9 +138,13 @@ def main(entry):
         html = html.replace('/* INLINE_STYLE */', (assets/'style.css').read_text(encoding='utf8'))
         html = html.replace('/* INLINE_SCRIPT */', (assets/'main.js').read_text(encoding='utf8'))
         t = perf_counter()
-        window = webview.create_window('Signing', html=html, js_api=Bridge(diag),
+        bridge=Bridge(diag)
+        from processing import Session
+        bridge._session=Session()
+        window = webview.create_window('Signing', html=html, js_api=bridge,
                                       width=960, height=680, min_size=(680,480),
                                       resizable=True, background_color='#F4F6F8')
+        bridge._window=window
         diag.record('window_object_created', duration_ms=(perf_counter()-t)*1000)
         for name in ['shown','loaded','minimized','maximized','restored','closed']:
             def event_handler(*unused, event=name):

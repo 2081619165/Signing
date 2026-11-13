@@ -1,3 +1,7 @@
+## 本轮黑签功能整合
+新增app/algorithm.py（适配V1内存核心）、sharpen.py（复用V2不含实验导出）、processing.py（校验/会话/PNG-GIF原子导出）、licenses/show7-MIT.txt；修改window.py桥接与依赖检查、static三文件业务交互及requirements图像依赖；新增tests/test_processing.py。更新README、PROGRESS、DECISIONS、BUGS、CHECK_REPORT与CHANGELOG。保留原型诊断及全部experiments，无提交推送。
+
+## 先前记录
 ## 本轮交付整理
 补充最新进度、发布授权及检查说明；按用户要求准备将最小窗口原型与相关文档提交到master并推送origin。不包含样本、日志、虚拟环境或V1/V2修改。
 

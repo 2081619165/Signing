@@ -1,3 +1,9 @@
+## 本轮生效：正式黑签处理
+不采用Tkinter；用户已验证PyWebView原型。按现有app目录最小扩展而不另建包树。V1核心从实验版适配为extract(image)->原尺寸RGBA，算法操作不变，去掉磁盘与400×200实验画布；V2按原函数保留，默认关闭。许可证随正式模块保存。
+PNG/GIF统一42px高并按内容比例定宽。连续Alpha不等于颜色强制加黑：复用V1黑RGB+相对墨量Alpha，不将Alpha硬二值化用于PNG。GIF有损128阈值不改为自动加黑，全透明明确失败；重读合格后原子替换目标。临时文件在目标目录并finally清理。
+选择文件走原生对话框，拖拽用FileReader传内容，无需HTTP或浏览器完整路径。业务会话以非阻塞锁拒绝重入，PyWebView原有后台桥接线程执行处理，不使用UI线程。原图/结果仅保留在内存，数据URL只用于预览，无真实图片写入仓库。状态由前端busy和后端互斥共同保护。
+
+## 先前记录
 # 本轮生效决策：PyWebView原型
 用户明确选择覆盖此前Tkinter建议。采用Python+PyWebView+静态HTML/CSS/JS；固定edgechromium，检测WebView2注册表与.NET release，记录实际renderer，发现非edgechromium关闭，不接受静默MSHTML成功。仅最小原型，不改变算法分层规划。
 Windows官方后端：edgechromium、已弃用mshtml、可选CEF；另可选Qt需额外依赖，本轮不安装。6.2.1实际winforms源码仍可能在条件不满足时选MSHTML，因此增加先决检查及实际后端记录。CEF/Qt不作为本轮降级方案。

@@ -1,5 +1,5 @@
 # Signing
-Windows 印签处理工具的算法验证项目。当前完成 V1 灰底签名与 V2 可选自然锐化实验，已有独立最小窗口原型，尚无完整业务GUI或EXE；红章仅做上游算法实验，蓝章及自动类型识别未实现。
+Windows 印签处理工具的算法验证项目。当前完成 V1 灰底签名与 V2 可选自然锐化实验，已有独立最小窗口原型，现已接入黑签单图闭环，尚无EXE；红章仅做上游算法实验，蓝章及自动类型识别未实现。
 
 ## 当前目录与入口
 - experiments/gray_signature.py：V1 灰底去除，原尺寸RGBA及400×200实验画布；不是独立命令行入口。
@@ -51,3 +51,23 @@ python -m venv 'D:\code\Signing\.venv'
 Get-ChildItem -LiteralPath 'D:\code\Signing\.local-tests\webview-logs' -Filter '*.jsonl' | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content
 ```
 指标解释：since_entry_ms从main.py首个perf_counter开始，不包含进程创建、Python解释器初始化及此前time导入；webview_imported.duration_ms为导入耗时；window_object_created仅创建Python窗口对象；gui_loop_requested到window_shown/loaded是框架初始化/事件代理，不是系统首帧绘制。js_ready中的script_start_ms/bridge_ready_ms以浏览器performance时钟记录，script_to_bridge_ms是脚本到桥接就绪间隔，不是纯JS执行CPU时间；不能与Python时钟相减。bridge_rtt为JS单调时钟测量的JS→Python→JS往返（含调度），不包含随后写回测量日志的调用。无法直接测量系统真实首帧/像素黑屏/解释器启动耗时，不生成伪造数值。日志I/O会有少量观测开销。
+
+
+## 当前黑色签名应用（本轮）
+用户已人工确认上一版窗口启动、最小化恢复、缩放和通信基本正常；正式采用PyWebView，不再计划Tkinter。新接入的业务交互与视觉效果仍待人工验收。
+
+安装/更新与运行：
+```powershell
+Set-Location -LiteralPath 'D:\code\Signing'
+& 'D:\code\Signing\.venv\Scripts\python.exe' -m pip install -r 'D:\code\Signing\app\requirements.txt'
+& 'D:\code\Signing\.venv\Scripts\python.exe' 'D:\code\Signing\app\main.py' --check
+& 'D:\code\Signing\.venv\Scripts\python.exe' 'D:\code\Signing\app\main.py'
+```
+界面选择图片，或向图片区拖入单张PNG/JPG/JPEG，点击提取。右侧切换棋盘/白底；V2锐化默认关闭。完成后分别点击PNG/GIF导出，选择目标路径；每种格式单独显示结果。默认均裁剪透明留白后等比缩放到42px高；PNG保留连续Alpha，GIF128阈值单级透明，淡笔可能失败且不写入目标文件。裁剪只按非零Alpha包围盒，不裁切非零笔画。缩小后的可读性需人工确认。
+新导入与重新处理清空旧结果，错误不沿用旧图。取消选择后需重新导入。导出校验后才替换目标；选择文件方式禁止覆盖原路径，拖入方式因没有完整路径会保守禁止与源文件同名导出。导入限制30MB/2000万像素；EXIF方向归正，透明输入先合成白纸。预览仅缩小副本，不修改原始文件。
+正式业务代码：app/algorithm.py复用V1原尺寸核心；app/sharpen.py复用V2；app/processing.py负责校验、会话与导出；app/window.py负责原生对话框、桥接互斥和诊断。桥接函数由PyWebView工作线程运行，JS使用Promise等待，处理时禁用重复操作；无HTTP或CDN，图片预览使用内存data URL。窗口层不记录图片内容。
+本轮需手测：中文路径选择与拖拽、灰白底真实图、两种背景、新图清空、坏图/空白图、淡灰GIF报错后PNG仍可导出、处理时窗口响应、对话框取消及覆盖行为。原型诊断按钮仍保留。
+自动检查：
+```powershell
+& 'D:\code\Signing\.venv\Scripts\python.exe' -m unittest discover -s 'D:\code\Signing\tests' -v
+```
