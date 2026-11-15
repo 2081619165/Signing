@@ -1,3 +1,9 @@
+## 2026-11-15 GIF浅笔修复（覆盖历史固定128规则）
+仅修改app/processing.py GIF转换和重读质量校验；tests/test_processing.py调整淡笔预期并增加回归；新增experiments/gif_alpha_compare.py。更新README及相关文档。V1、锐化、GUI、尺寸/DPI不变，无提交推送或EXE。
+
+## 2026-11-15 黑签笔画专项实验
+新增独立背景优先实验脚本及命令入口；生成合成真值、两算法同视野原生/缩小输出和透明度/连通性统计；更新README及专项分析文档。不修改app或现有实验，不推送、不打包。
+
 ## 2026-11-15 导出准确性
 修改processing.py重读DPI校验和实际尺寸返回；main.js仅更新预计/成功提示文字及格式切换重算；新增尺寸DPI回归测试。V1/V2、布局和依赖不变。
 

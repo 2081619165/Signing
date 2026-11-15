@@ -1,3 +1,9 @@
+## GIF浅笔导出更新
+GIF使用自适应Alpha门限和灰度调色板，避免浅笔全部删除或统一变黑；尺寸不变。重读覆盖率或墨量不足90%明确失败并保留原目标。GIF单级透明在深色背景无法等同PNG连续Alpha，复杂噪声及真实图仍需人工验收。合成对比：`.venv/Scripts/python.exe experiments/gif_alpha_compare.py`，输出仅在.local-tests/gif-alpha。
+
+## 独立背景优先对照实验
+运行 `.venv/Scripts/python.exe experiments/background_first.py` 生成合成案例；加 `--input 本地图片路径` 对照指定图片。输出默认 `.local-tests/background-first`，仅允许写入.local-tests；同名输出会覆盖。原生PNG与统一148×74全视野PNG/GIF、白/深底预览和JSON均保留；不模拟正式裁剪导出，不替代V1，不等同Photoshop颜色范围。真实样本结果需人工检查。
+
 ## 导出尺寸与DPI说明（2026-11-15）
 PNG保存并重读校验DPI；GIF无可靠DPI元数据，以实际像素为准，其他软件显示的72 DPI不代表像素变化。厘米按所选DPI换算并四舍五入至整数像素：42px在96 DPI为1.11125cm，固定厘米存在微小取整误差。修改外部软件分辨率时请检查是否启用重采样。启动和测试入口沿用下文。
 

@@ -9,7 +9,7 @@ from PIL import Image,ImageDraw
 import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'app'))
-from processing import Session
+from processing import Session, gif_image, gif_quality
 from window import Bridge
 
 class ProcessingTests(unittest.TestCase):
@@ -29,12 +29,12 @@ class ProcessingTests(unittest.TestCase):
                     a=np.asarray(im.convert('RGBA'))[...,3];self.assertTrue((a==0).any() and (a>0).any())
             self.assertEqual(before,p.read_bytes())
 
-    def test_faint_failure_preserves_target_and_png_success(self):
+    def test_faint_gif_and_png_success(self):
         s=Session();s.load('faint.png',self.sample(170));s.process()
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)/'existing.gif';p.write_bytes(b'existing')
-            with self.assertRaisesRegex(ValueError,'全透明'):s.export(p,'gif')
-            self.assertEqual(p.read_bytes(),b'existing')
+            s.export(p,'gif')
+            self.assertNotEqual(p.read_bytes(),b'existing')
             s.export(Path(folder)/'valid.png','png')
 
     def test_empty_and_bad_import_clear_result(self):
@@ -96,6 +96,30 @@ class ProcessingTests(unittest.TestCase):
                         else:
                             self.assertEqual(set(np.unique(alpha)),{0,255})
                             self.assertIsNone(r['dpi'])
+
+    def test_gif_faint_lines_and_quality_guard(self):
+        im=Image.new('RGBA',(36,42));d=ImageDraw.Draw(im)
+        for y,a in ((5,24),(15,50),(25,100)):
+            d.line((3,y,32,y),fill=(0,0,0,a),width=1)
+        im.putpixel((1,40),(0,0,0,2))
+        pal,report=gif_image(im)
+        a=np.asarray(im)[...,3];mask=np.asarray(pal)>0
+        self.assertTrue(mask[5,3:33].all())
+        self.assertFalse(mask[40,1])
+        self.assertEqual(pal.size,(36,42))
+        self.assertLess(int((a>=128).sum()),int(mask.sum()))
+        with self.assertRaisesRegex(ValueError,'丢失大量'):gif_quality(a,a>=128)
+        with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+            target=Path(folder)/'faint.gif';pal.save(target,transparency=0)
+            with Image.open(target) as read:
+                self.assertTrue(np.array_equal(np.asarray(read.convert('RGBA'))[...,3]>0,mask))
+        s=Session();s.result=im.copy();s.result.putpixel((0,0),(0,0,0,255))
+        with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+            p=Path(folder)/'keep.gif';p.write_bytes(b'existing')
+            from unittest.mock import patch
+            with patch('processing.gif_image',return_value=(Image.new('P',im.size),{})):
+                with self.assertRaises(ValueError):s.export(p,'gif',dict(unit='px',width=36,height=42))
+            self.assertEqual(p.read_bytes(),b'existing')
 
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()

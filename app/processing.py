@@ -15,6 +15,36 @@ def preview(image):
     im=image.copy();im.thumbnail((1200,900));stream=io.BytesIO();im.save(stream,format='PNG')
     return 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii')
 
+def gif_image(image):
+    """单级透明配灰度调色板；不补画、不改变尺寸。"""
+    a=np.asarray(image.convert('RGBA'))[...,3]
+    active=a[a>=4]
+    if not active.size:raise ValueError('GIF有效笔画过淡，请保留PNG')
+    threshold=max(4,min(32,int(np.ceil(np.percentile(active,95)*.2))))
+    # 若主要笔迹覆盖不足，降低阈值，但不纳入1至3级微弱噪点。
+    reference=a>=8
+    while threshold>4 and ((reference.any() and (a[reference]>=threshold).mean()<.95) or float(a[a>=threshold].sum())/max(float(a.sum()),1)<.95):
+        threshold-=1
+    mask=a>=threshold
+    # 灰色不透明像素近似白底上的原Alpha外观，避免浅笔全部变黑。
+    indices=np.where(mask,np.maximum(a,1),0).astype('uint8')
+    pal=Image.fromarray(indices).convert('P')
+    pal.putpalette([channel for i in range(256) for channel in (255-i,)*3])
+    report=gif_quality(a,mask)
+    report['threshold']=threshold
+    return pal,report
+
+
+def gif_quality(alpha,mask):
+    # 同尺寸比较；8级Alpha以上视为参考笔迹，墨量同时纳入更浅边缘。
+    reference=alpha>=8
+    coverage=float(mask[reference].mean()) if reference.any() else 0
+    mass=float(alpha[mask].sum())/max(float(alpha.sum()),1)
+    if coverage<.9 or mass<.9:
+        raise ValueError('GIF相对PNG丢失大量有效笔画，请保留PNG（覆盖率%.1f%%，墨量%.1f%%）'%(coverage*100,mass*100))
+    return dict(coverage=coverage,alpha_mass_retained=mass)
+
+
 class Session:
     def __init__(self):
         self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
@@ -84,10 +114,9 @@ class Session:
         content=ImageOps.contain(self.result.crop(box),(w,h),Image.Resampling.LANCZOS)
         im=Image.new('RGBA',(w,h));im.alpha_composite(content,((w-content.width)//2,(h-content.height)//2))
         if kind=='gif':
-            a=np.asarray(im)[...,3];mask=a>=128
-            if not mask.any():raise ValueError('GIF转换后全透明；请保留PNG，不能导出有效GIF')
-            if mask.all():raise ValueError('GIF没有透明背景')
-            pal=Image.fromarray(mask.astype('uint8')).convert('P');pal.putpalette([0]*768);im=pal
+            gif_alpha=np.asarray(im)[...,3].copy()
+            im,quality=gif_image(im)
+            if not (np.asarray(im)==0).any():raise ValueError('GIF没有透明背景')
         fd,temp=tempfile.mkstemp(dir=path.parent,suffix='.'+kind);os.close(fd)
         try:
             if kind=='gif':im.save(temp,format='GIF',transparency=0)
@@ -99,9 +128,10 @@ class Session:
                 if kind=='png' and (not actual_dpi or any(abs(d-spec['dpi'])>0.0128 for d in actual_dpi)):
                     raise ValueError('导出重读检查失败：PNG DPI异常')
                 a=np.asarray(check.convert('RGBA'))[...,3]
+                if kind=='gif':quality.update(gif_quality(gif_alpha,a>0))
                 if check.format!=kind.upper() or check.size!=(w,h) or not (a>0).any() or not (a==0).any():raise ValueError('导出重读检查失败：尺寸、格式、透明或笔画异常')
             # 校验后才替换目标，失败不留下伪成功文件。
             os.replace(temp,path)
         finally:
             if os.path.exists(temp):os.unlink(temp)
-        return dict(path=str(path),size=actual_size,format=kind,dpi=actual_dpi,cm=spec['cm'])
+        return dict(path=str(path),size=actual_size,format=kind,dpi=actual_dpi,cm=spec['cm'],quality=quality if kind=='gif' else None)
