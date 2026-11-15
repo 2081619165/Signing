@@ -1,13 +1,16 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing</title><style>/* INLINE_STYLE */</style></head><body>
-<header><h1>Signing</h1><p>黑色手写签名 · 本地处理</p></header>
-<main><section id="dropzone"><div class="toolbar"><button id="open" disabled>选择图片</button><button id="process" disabled>提取黑色签名</button><label><input id="enhance" type="checkbox">可选自然锐化</label><label><input id="white" type="checkbox">白底预览</label></div><p>也可拖入一张PNG/JPG/JPEG图片。原文件不会因预览或处理而修改。</p><p id="workstatus">等待导入图片</p><div class="previews"><div><h2>原图</h2><div class="imagebox"><img id="original" alt="尚未导入"></div></div><div><h2>透明结果</h2><div class="imagebox checker" id="resultbg"><img id="processed" alt="尚未处理"></div></div></div><div class="export-settings"><h2>图像尺寸与导出</h2><div class="toolbar">
+<header><h1>Signing</h1><span>黑色签名 · 本地处理</span></header><main><section>
+<div class="export-settings"><h2>图像尺寸与导出</h2><div class="toolbar">
 <label>格式 <select id="format"><option value="png">PNG</option><option value="gif">GIF</option></select></label>
-<label>规格 <select id="preset"><option value="signature">手写签名 · 宽1.1cm</option><option value="legal">法人章 · 1.6×1.6cm</option><option value="builder">建造师章 · 4×2.8cm</option><option value="official">公章 · 4×4cm</option><option value="custom">自定义</option></select></label>
+<label>规格 <select id="preset"><option value="signature">手写签名 · 高1.1cm</option><option value="signature09">手写签名 · 高0.9cm</option><option value="legal">法人章 · 1.6×1.6cm</option><option value="builder">建造师章 · 4×2.8cm</option><option value="official">公章 · 4×4cm</option><option value="custom">自定义</option></select></label>
 <label>单位 <select id="unit"><option value="cm">厘米</option><option value="px">像素</option></select></label>
-<label>宽 <input id="width" type="number" min="0" step="any" value="1.1"></label>
-<label>高 <input id="height" type="number" min="0" step="any"></label>
+<label>宽 <input id="width" type="number" min="0" step="any"></label>
+<label>高 <input id="height" type="number" min="0" step="any" value="1.1"></label>
 <label>DPI <input id="dpi" type="number" min="1" max="2400" step="any" value="96"></label>
 <label><input id="ratio" type="checkbox" checked>保持宽高比例</label></div>
-<p id="estimated">处理图片后计算预计输出像素</p><button id="export" disabled>导出文件</button> <span id="exportstatus">未导出</span>
-<p>始终等比适配画布、透明留白居中；解锁比例也不会拉伸笔画。章规格仅为尺寸模板，不提供章算法。GIF单级透明，淡笔可能无法导出。</p></div></section>
-<section><h2>运行诊断</h2><p id="status">页面已显示，等待 JavaScript / Python 桥接…</p><button id="ping" disabled>测试 Python 通信</button> <button id="marker" disabled>记录人工观察点</button><pre id="result">等待初始化</pre><p>使用系统标题栏最小化、最大化、还原和关闭。黑屏与卡顿须人工确认。</p></section></main><script>/* INLINE_SCRIPT */</script></body></html>
+<p id="estimated">处理图片后计算预计输出像素</p>
+</div>
+<div class="previews"><div><h2>图片导入</h2><button id="open" class="imagebox importbox" disabled aria-label="点击选择或更换图片"><img id="original" alt=""><span id="importhint">点击或拖入 PNG / JPG / JPEG</span></button><p id="filename">未导入图片</p></div><div><h2>透明结果</h2><div class="imagebox checker" id="resultbg"><img id="processed" alt="尚未处理"></div></div></div>
+<div class="toolbar options"><label><input id="enhance" type="checkbox">自然锐化（可选）</label><label><input id="white" type="checkbox">白底预览</label><span>等比适配 · 透明留白</span></div>
+<div class="toolbar actions"><button id="process" disabled>提取黑色签名</button><button id="export" disabled>导出文件</button><span id="exportstatus">未导出</span></div><p id="workstatus" role="status">请点击左侧导入图片</p></section>
+<details><summary>运行诊断</summary><p id="status">等待桥接…</p><button id="ping" disabled>测试 Python 通信</button> <button id="marker" disabled>记录观察点</button><pre id="result">等待初始化</pre></details></main><script>/* INLINE_SCRIPT */</script></body></html>

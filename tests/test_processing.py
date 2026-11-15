@@ -24,7 +24,7 @@ class ProcessingTests(unittest.TestCase):
             with self.assertRaises(ValueError):s.export(p,'png')
             for kind in ['png','gif']:
                 target=Path(folder)/('签名.'+kind);r=s.export(target,kind)
-                self.assertEqual(r['size'][0],42)
+                self.assertEqual(r['size'][1],42)
                 with Image.open(target) as im:
                     a=np.asarray(im.convert('RGBA'))[...,3];self.assertTrue((a==0).any() and (a>0).any())
             self.assertEqual(before,p.read_bytes())
@@ -62,6 +62,8 @@ class ProcessingTests(unittest.TestCase):
                     r=s.export(Path(folder)/('out.'+kind),kind,config)
                     self.assertEqual(r['size'],expected)
                     with Image.open(Path(folder)/('out.'+kind)) as im:self.assertEqual(list(im.size),expected)
+            self.assertEqual(s.dimensions(dict(unit='cm',height=.9,dpi=96))['size'][1],34)
+            self.assertEqual(s.dimensions(dict(unit='cm',height=1.1,dpi=96))['size'][1],42)
             self.assertEqual(s.dimensions(dict(unit='px',width=42.5,height=20.5,dpi=96))['size'],[43,21])
             for value in ['NaN',0,-1,'Infinity',100000]:
                 with self.assertRaises(ValueError):s.dimensions(dict(unit='px',width=value,height=20,dpi=96))
@@ -70,6 +72,30 @@ class ProcessingTests(unittest.TestCase):
             self.assertTrue(np.array_equal(before,np.asarray(s.result)))
             with Image.open(Path(folder)/'custom.png') as im:
                 box=im.getbbox();self.assertLess(box[3]-box[1],100)
+
+    def test_export_dpi_accuracy(self):
+        s=Session()
+        s.result=Image.new('RGBA',(180,104))
+        s.result.paste((0,0,0,180),(2,2,180,102))
+        s.result.paste((0,0,0,0),(30,20,140,80))
+        with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+            for dpi in (72,96,300):
+                config=dict(unit='cm',height=1.1,dpi=dpi)
+                expected=s.dimensions(config)
+                if dpi==96:self.assertEqual(expected['size'],[74,42])
+                for kind in ('png','gif'):
+                    target=Path(folder)/('accuracy.'+kind)
+                    r=s.export(target,kind,config)
+                    with Image.open(target) as im:
+                        self.assertEqual(list(im.size),expected['size'])
+                        self.assertEqual(r['size'],list(im.size))
+                        alpha=np.asarray(im.convert('RGBA'))[...,3]
+                        if kind=='png':
+                            self.assertTrue(((alpha>0)&(alpha<255)).any())
+                            for value in im.info['dpi']:self.assertAlmostEqual(value,dpi,delta=.0128)
+                        else:
+                            self.assertEqual(set(np.unique(alpha)),{0,255})
+                            self.assertIsNone(r['dpi'])
 
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()

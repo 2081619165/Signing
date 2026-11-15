@@ -48,29 +48,29 @@ async function task(action){
  finally{busy=false;updateControls();}
 }
 function check(reply){if(!reply.ok)throw new Error(reply.error);return reply;}
-function accept(reply){check(reply);if(reply.cancelled)return;clearResult();hasInput=true;original.src=reply.preview;workstatus.textContent='已导入：'+reply.name;}
+function accept(reply){check(reply);if(reply.cancelled)return;clearResult();hasInput=true;original.src=reply.preview;document.getElementById('filename').textContent=reply.name;document.getElementById('filename').title=reply.name;workstatus.textContent='已导入：'+reply.name;}
 openButton.addEventListener('click',()=>task(async()=>{
- clearResult();hasInput=false;original.removeAttribute('src');workstatus.textContent='选择图片…';
+ clearResult();hasInput=false;original.removeAttribute('src');document.getElementById('filename').textContent='未导入图片';workstatus.textContent='选择图片…';
  const reply=await window.pywebview.api.choose_image();accept(reply);
  if(reply.cancelled)workstatus.textContent='已取消，请重新导入';
 }));
 processButton.addEventListener('click',()=>task(async()=>{
  clearResult();workstatus.textContent='正在提取，请稍候…';
  const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked));
- processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value==='signature')applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。锐化：'+r.sharpen.reason;
+ processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。锐化：'+r.sharpen.reason;
 }));
 exportButton.addEventListener('click',()=>task(async()=>{
  const label=document.getElementById('exportstatus');label.textContent='等待保存…';
- try{const r=check(await window.pywebview.api.export_image(document.getElementById('format').value,settings()));label.textContent=r.cancelled?'已取消':('成功：'+r.size.join('×')+' px');}
+ try{const r=check(await window.pywebview.api.export_image(document.getElementById('format').value,settings()));label.textContent=r.cancelled?'已取消':('成功：'+r.size.join('×')+' px；'+(r.format==='gif'?'GIF无可靠DPI元数据，其他软件可能显示72 DPI；不改变像素':('PNG DPI：'+r.dpi[0].toFixed(3))));}
  catch(e){label.textContent='失败：'+String(e);throw e;}
 }));
 document.getElementById('white').addEventListener('change',e=>document.getElementById('resultbg').classList.toggle('checker',!e.target.checked));
 // 用FileReader读取拖入内容，避免依赖浏览器隐藏的本地路径。
 for(const name of ['dragover','drop'])document.addEventListener(name,e=>e.preventDefault());
-document.getElementById('dropzone').addEventListener('drop',e=>{
+openButton.addEventListener('drop',e=>{
  const files=e.dataTransfer.files;
  task(async()=>{
-  clearResult();hasInput=false;original.removeAttribute('src');
+  clearResult();hasInput=false;original.removeAttribute('src');document.getElementById('filename').textContent='未导入图片';
   if(files.length!==1)throw new Error('请每次拖入一张图片');
   const file=files[0];if(file.size>30*1024*1024)throw new Error('图片超过30MB');
   workstatus.textContent='正在导入…';
@@ -82,10 +82,13 @@ document.getElementById('dropzone').addEventListener('drop',e=>{
 const preset=document.getElementById('preset'),unit=document.getElementById('unit');
 const widthInput=document.getElementById('width'),heightInput=document.getElementById('height'),dpiInput=document.getElementById('dpi');
 let contentRatio=1,sizeValid=false,sizeVersion=0,estimateTimer;
-const setNumber=(el,n)=>el.value=Number(n.toPrecision(12));
-function settings(){return {unit:unit.value,width:widthInput.value,height:heightInput.value,dpi:dpiInput.value};}
+// 显示保留三位小数；真实数值独立保存，避免单位切换损失精度。
+const exact=new Map();
+const numeric=el=>exact.has(el)?exact.get(el):Number(el.value);
+const setNumber=(el,n)=>{exact.set(el,n);el.value=Number(n.toFixed(3));};
+function settings(){return {unit:unit.value,width:numeric(widthInput),height:numeric(heightInput),dpi:dpiInput.value};}
 function applyPreset(){
- const sizes={signature:[1.1,1.1/contentRatio],legal:[1.6,1.6],builder:[4,2.8],official:[4,4]};
+ const sizes={signature:[1.1*contentRatio,1.1],signature09:[.9*contentRatio,.9],legal:[1.6,1.6],builder:[4,2.8],official:[4,4]};
  if(!sizes[preset.value])return;
  const f=unit.value==='cm'?1:Number(dpiInput.value)/2.54;
  setNumber(widthInput,sizes[preset.value][0]*f);setNumber(heightInput,sizes[preset.value][1]*f);
@@ -96,7 +99,7 @@ function scheduleEstimate(){
  if(!hasResult)return;
  document.getElementById('estimated').textContent='正在计算…';updateControls();
  estimateTimer=setTimeout(async()=>{
-  try{const r=check(await window.pywebview.api.estimate_size(settings()));if(version!==sizeVersion)return;sizeValid=true;document.getElementById('estimated').textContent='预计输出：'+r.size.join(' × ')+' px';}
+  try{const r=check(await window.pywebview.api.estimate_size(settings()));if(version!==sizeVersion)return;sizeValid=true;document.getElementById('estimated').textContent='预计输出：'+r.size.join(' × ')+' px；按所选DPI折算 '+r.cm.map(n=>n.toFixed(4)).join(' × ')+' cm（像素取整有微小误差）'+(document.getElementById('format').value==='gif'?'；GIF无可靠DPI元数据，以像素为准':'');}
   catch(e){if(version!==sizeVersion)return;document.getElementById('estimated').textContent='尺寸无效：'+String(e);}
   updateControls();
  },180);
@@ -104,17 +107,17 @@ function scheduleEstimate(){
 preset.addEventListener('change',()=>{applyPreset();scheduleEstimate();});
 unit.addEventListener('change',()=>{
  const f=unit.value==='px'?Number(dpiInput.value)/2.54:2.54/Number(dpiInput.value);
- for(const el of [widthInput,heightInput])if(Number(el.value)>0)setNumber(el,Number(el.value)*f);
+ for(const el of [widthInput,heightInput])if(numeric(el)>0)setNumber(el,numeric(el)*f);
  scheduleEstimate();
 });
 for(const el of [widthInput,heightInput])el.addEventListener('input',()=>{
- preset.value='custom';
+ exact.delete(el);preset.value='custom';
  if(document.getElementById('ratio').checked&&Number(el.value)>0){
   if(el===widthInput)setNumber(heightInput,Number(el.value)/contentRatio);
   else setNumber(widthInput,Number(el.value)*contentRatio);
  }
  scheduleEstimate();
 });
-document.getElementById('ratio').addEventListener('change',e=>{if(e.target.checked){preset.value='custom';setNumber(heightInput,Number(widthInput.value)/contentRatio);}scheduleEstimate();});
+document.getElementById('ratio').addEventListener('change',e=>{if(e.target.checked){preset.value='custom';setNumber(heightInput,numeric(widthInput)/contentRatio);}scheduleEstimate();});
 dpiInput.addEventListener('input',()=>{scheduleEstimate();});
-document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';});
+document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';scheduleEstimate();});

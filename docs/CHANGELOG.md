@@ -1,3 +1,10 @@
+## 2026-11-15 导出准确性
+修改processing.py重读DPI校验和实际尺寸返回；main.js仅更新预计/成功提示文字及格式切换重算；新增尺寸DPI回归测试。V1/V2、布局和依赖不变。
+
+## 本轮：规格纠正与紧凑布局
+修改app/processing.py默认高度及单边自动计算；修改static/index.html、style.css、main.js紧凑布局和导入交互、0.9cm项、显示精度；更新tests/test_processing.py默认高度及0.9cm断言；更新README和5份docs。桥接接口复用未改，V1/V2/experiments未改。
+
+## 先前记录
 ## 本轮修改：图像尺寸与导出面板
 修改app/processing.py：统一尺寸计算、可配置DPI及固定透明画布；app/window.py：预计尺寸桥接和导出设置参数；app/static/index.html/main.js/style.css：统一导出按钮和尺寸面板；tests/test_processing.py：新默认宽度及预设/自定义/无效尺寸回归；更新README及5份项目文档。未修改V1/V2或experiments，无依赖变更、无提交推送。
 

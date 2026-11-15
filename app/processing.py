@@ -47,7 +47,7 @@ class Session:
         if self.result is None:raise ValueError('请先成功处理图片')
         box=self.result.getbbox()
         if not box:raise ValueError('没有有效笔画')
-        settings=settings or {'unit':'cm','width':1.1,'dpi':96}
+        settings=settings or {'unit':'cm','height':1.1,'dpi':96}
         if not isinstance(settings,dict):raise ValueError('无效尺寸设置')
         def number(value):
             try:n=Decimal(str(value))
@@ -58,14 +58,20 @@ class Session:
         if not 1<=dpi<=2400:raise ValueError('DPI范围为1至2400')
         unit=settings.get('unit','cm')
         if unit not in {'cm','px'}:raise ValueError('无效单位')
-        width=number(settings.get('width',1.1))
+        width=settings.get('width')
         height=settings.get('height')
-        height=number(height) if height is not None else width*Decimal(box[3]-box[1])/Decimal(box[2]-box[0])
+        ratio=Decimal(box[2]-box[0])/Decimal(box[3]-box[1])
+        if width is None:
+            height=number(height if height is not None else 1.1)
+            width=height*ratio
+        else:
+            width=number(width)
+            height=number(height) if height is not None else width/ratio
         factor=dpi/Decimal('2.54') if unit=='cm' else Decimal(1)
         w=int((width*factor).quantize(Decimal(1),rounding=ROUND_HALF_UP))
         h=int((height*factor).quantize(Decimal(1),rounding=ROUND_HALF_UP))
         if min(w,h)<1 or max(w,h)>10000 or w*h>20_000_000:raise ValueError('输出需至少1px，单边不超过10000px，总量不超过2000万像素')
-        return dict(size=[w,h],dpi=float(dpi))
+        return dict(size=[w,h],dpi=float(dpi),cm=[float(Decimal(n)*Decimal('2.54')/dpi) for n in (w,h)])
 
     def export(self, path, kind, settings=None):
         if self.result is None:raise ValueError('请先成功处理图片')
@@ -87,10 +93,15 @@ class Session:
             if kind=='gif':im.save(temp,format='GIF',transparency=0)
             else:im.save(temp,format='PNG',dpi=(spec['dpi'],spec['dpi']))
             with Image.open(temp) as check:
+                actual_size=list(check.size)
+                actual_dpi=check.info.get('dpi') if kind=='png' else None
+                # PNG pHYs以整数像素/米存储，允许半个单位的量化误差。
+                if kind=='png' and (not actual_dpi or any(abs(d-spec['dpi'])>0.0128 for d in actual_dpi)):
+                    raise ValueError('导出重读检查失败：PNG DPI异常')
                 a=np.asarray(check.convert('RGBA'))[...,3]
                 if check.format!=kind.upper() or check.size!=(w,h) or not (a>0).any() or not (a==0).any():raise ValueError('导出重读检查失败：尺寸、格式、透明或笔画异常')
             # 校验后才替换目标，失败不留下伪成功文件。
             os.replace(temp,path)
         finally:
             if os.path.exists(temp):os.unlink(temp)
-        return dict(path=str(path),size=[w,h],format=kind)
+        return dict(path=str(path),size=actual_size,format=kind,dpi=actual_dpi,cm=spec['cm'])
