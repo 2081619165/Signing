@@ -1,3 +1,12 @@
+## 2026-11-16 SealKit品牌与发布准备
+保留Signing仓库/路径及现有架构。原创几何图标由tools/branding/generate_icon.py统一源生成SVG/PNG/多尺寸ICO，不依赖第三方商标。页面图标内联data URL，窗口用webview.start(icon)，AppUserModelID为SealKit.Desktop。无既有打包配置，新增packaging/SealKit.spec白名单收集资源及WinForms/WebView/pythonnet运行文件，console=False/单文件。冻结运行日志迁移LOCALAPPDATA/SealKit/logs；资源仍按模块__file__读取。
+
+## 2026-11-16 旋转移至透明结果
+覆盖上一轮原图旋转设计：旋转仅在去背景与可选增强后执行，透明RGBA BICUBIC expand填充透明；Session保留base_result且每次从母版计算，result作为预览/导出唯一结果。框选窗口不再持有角度。旋转异步串行，只显示最新角度，更新过程中禁止导出并使旧预计尺寸请求失效。
+
+## 2026-11-16 框选窗口旋转矫正
+复用crop桥接新增rotate预览与confirm(box,angle)；Python预览/最终均Pillow BICUBIC+expand白底，正角逆时针。选区坐标属于扩边后的旋转原图。每次从full原图旋转防累计采样；Session.rotation只在确认裁切成功后提交，重开恢复已确认角度/框，新导入归零。角度调整重置选框、适应窗口，平移/缩放逻辑不改。
+
 ## 2026-11-16 浅彩识别与蓝色亮度保留
 沿用单一extract_color，蓝色主导(B>R+.03且B>G+.03)保留原RGB再做白底分解，红章原归一化不变。不直接增加不透明度或指定深蓝，不扩张支持范围。分类彩色证据门限S>=32、通道差>=10；彩色自身bands<=12、比例>=50%或有限横线补充证据，继续保留连通/密度/整页限制及手动兜底。
 

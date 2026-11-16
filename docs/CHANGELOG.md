@@ -1,3 +1,15 @@
+## 2026-11-16 EXE配置复核（未打包）
+本轮仅补充正式EXE准备检查证据与打包说明，复用现有spec，不改界面/算法/功能。未运行PyInstaller、未提交推送。
+
+## 2026-11-16 SealKit品牌与发布准备
+主窗口及HTML品牌改SealKit/印迹与统一副标题；CSS品牌收尾和控件细节；main.py说明及window.py图标/AppUserModelID/冻结日志路径适配。新增app/assets原创SVG/PNG/ICO、tools/branding/generate_icon.py、packaging/SealKit.spec与requirements-build.txt。README补打包命令及边界。未改算法/GIF、未打包/提交/推送。
+
+## 2026-11-16 旋转移至透明结果
+撤回crop前后端旋转控件/接口，恢复原图裁切；processing.py改为base_result透明母版和rotate_result；window.py新增结果旋转桥接；主界面增加折叠角度控件及串行请求，更新测试和文档。未改识别、提取算法、尺寸/DPI或导出规则，无提交推送打包。
+
+## 2026-11-16 框选窗口旋转矫正
+修改app/crop HTML/JS添加角度控件及异步预览，crop桥接增加原图旋转预览和角度提交；processing.py增加rotated与旋转后crop，window.py传递/重置角度；tests新增旋转回归，更新README及docs。未改核心提取、尺寸/DPI、PNG/GIF导出，无提交推送/EXE。
+
 ## 2026-11-16 浅彩识别与蓝色亮度保留
 仅修改app/algorithm.py浅彩分类证据、彩色行带/诊断及蓝色原RGB透明分解；tests/test_processing.py增加回归；更新README及相关docs。无黑签/增强/框选/尺寸/导出改动，无推送或EXE。
 

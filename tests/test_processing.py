@@ -216,6 +216,24 @@ class ProcessingTests(unittest.TestCase):
         expected=np.rint(np.r_[np.clip((normalized-(1-alpha))/alpha,0,1)*255,alpha*255]).astype('uint8')
         self.assertTrue(np.array_equal(r,expected))
 
+    def test_transparent_rotation_before_export(self):
+        s=Session();s.load('input.png',self.sample());s.process()
+        base=s.result.copy();original=np.asarray(s.original).copy()
+        for angle in (-45,-13.2,0,25,45):
+            s.rotate_result(angle)
+            expected=base.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else base
+            self.assertTrue(np.array_equal(np.asarray(s.result),np.asarray(expected)))
+            self.assertTrue(np.array_equal(np.asarray(s.original),original))
+            self.assertTrue((np.asarray(s.result)[...,3]==0).any())
+        with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+            for kind in ('png','gif'):s.export(Path(folder)/('rotated.'+kind),kind,dict(unit='px',width=80,height=60))
+        s.rotate_result(0);self.assertTrue(np.array_equal(np.asarray(s.result),np.asarray(base)))
+        for angle in (46,float('nan'),True):
+            with self.assertRaises(ValueError):s.rotate_result(angle)
+        s.process();self.assertEqual(s.rotation,0)
+        s.load('new.png',self.sample());self.assertIsNone(s.base_result)
+        with self.assertRaises(ValueError):s.rotate_result(10)
+
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()
         try:self.assertFalse(bridge.process_image()['ok'])

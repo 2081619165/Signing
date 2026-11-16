@@ -37,6 +37,7 @@ let busy=false,hasInput=false,hasResult=false,inputType="uncertain";
 function effectiveType(){return document.getElementById('kind').value==='auto'?inputType:document.getElementById('kind').value;}
 function identify(r){document.getElementById('kind').value='auto';inputType=r.classification.type;document.getElementById("identification").textContent=({black_signature:"黑色签名",color_seal:"彩色印章",uncertain:"无法可靠判断"})[inputType]+"："+r.classification.reason;processButton.textContent=inputType==="color_seal"?"提取彩色印章":inputType==="black_signature"?"提取黑色签名":"请先框选区域";}
 function updateControls(){
+  for(const id of ['resultAngle','resultMinus','resultPlus','resultReset'])document.getElementById(id).disabled=!ready||!hasResult;
   document.getElementById('crop').disabled=!ready||busy||!hasInput;
   openButton.disabled=!ready||busy;processButton.disabled=!ready||busy||!hasInput||effectiveType()==="uncertain";
   exportButton.disabled=!ready||busy||!hasResult||!sizeValid;
@@ -44,7 +45,7 @@ function updateControls(){
   document.getElementById('kind').disabled=busy||!hasInput;
   document.getElementById('enhance').disabled=busy||effectiveType()!=='black_signature';
 }
-function clearResult(){hasResult=false;processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
+function clearResult(){document.getElementById("resultAngle").value=0;document.getElementById("resultDegrees").textContent="0°";hasResult=false;processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
 async function task(action){
  if(busy||!ready)return;
  busy=true;updateControls();
@@ -133,3 +134,22 @@ document.getElementById('crop').addEventListener('click',()=>task(async()=>{cons
 document.getElementById('enhance').addEventListener('change',()=>{clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});
 
 document.getElementById('kind').addEventListener('change',()=>{clearResult();processButton.textContent=effectiveType()==='color_seal'?'提取彩色印章':effectiveType()==='black_signature'?'提取黑色签名':'请先框选区域';workstatus.textContent='处理类型已改变，请重新提取';updateControls();});
+
+// 串行旋转请求，仅展示最新角度；更新成功前禁止导出。
+let rotating=false,rotationTarget=0,rotationRevision=0;
+async function rotateTransparent(value){
+ if(!hasResult||(!rotating&&busy))return;
+ rotationTarget=Math.max(-45,Math.min(45,Math.round(value*10)/10));rotationRevision++;sizeValid=false;sizeVersion++;clearTimeout(estimateTimer);
+ document.getElementById('resultAngle').value=rotationTarget;document.getElementById('resultDegrees').textContent=rotationTarget+'°';
+ if(rotating)return;rotating=true;busy=true;sizeValid=false;updateControls();
+ try{let version;do{version=rotationRevision;const r=check(await window.pywebview.api.rotate_result(rotationTarget));if(version!==rotationRevision)continue;
+ processed.src=r.preview;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();
+ document.getElementById('exportstatus').textContent='未导出';scheduleEstimate();
+ }while(version!==rotationRevision);
+ }catch(e){sizeValid=false;workstatus.textContent='旋转失败：'+String(e);}
+ finally{rotating=false;busy=false;updateControls();}
+}
+document.getElementById('resultAngle').addEventListener('input',e=>rotateTransparent(Number(e.target.value)));
+document.getElementById('resultMinus').onclick=()=>rotateTransparent(Number(document.getElementById('resultAngle').value)-1);
+document.getElementById('resultPlus').onclick=()=>rotateTransparent(Number(document.getElementById('resultAngle').value)+1);
+document.getElementById('resultReset').onclick=()=>rotateTransparent(0);

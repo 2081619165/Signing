@@ -1,3 +1,27 @@
+# SealKit · 印迹
+签名与印章提取工具。仓库及本地目录仍为Signing，历史记录中的名称不代表当前产品展示名。
+
+## 手动打包（本轮未执行）
+本次已复核现有spec与资源，不另建配置。当前虚拟环境未安装PyInstaller，先执行下面安装命令；构建依赖安装需要网络。未运行构建，输出路径为预期而非已生成文件。
+
+在Windows项目根目录运行：
+```powershell
+Set-Location -LiteralPath 'D:\code\Signing'
+& '.\.venv\Scripts\python.exe' -m pip install -r packaging/requirements-build.txt
+& '.\.venv\Scripts\python.exe' -m PyInstaller --clean --noconfirm packaging/SealKit.spec
+```
+预期输出 `D:\code\Signing\dist\SealKit.exe`，构建中间文件位于build。单文件、无控制台、内含Python运行时（架构跟随构建用Python，请在目标Windows架构上构建）；用户无需安装Python，但需WebView2 Evergreen及.NET Framework 4.6.2或更高版本。系统已安装WebView2时无需重复安装，未安装时需先安装，本配置不内嵌完整浏览器运行时。当前仅源码依赖检查通过，未验证构建成功或干净Windows运行。源码入口仍为 `.venv/Scripts/python.exe app/main.py`。
+
+资源按模块路径读取，配置仅收集app静态资源/框选资源/图标/许可及运行库，不收集.local-tests、.venv、客户文件。EXE日志位于 `%LOCALAPPDATA%\SealKit\logs`。发布前需核验依赖许可证、WebView2/.NET环境、中文路径和标准用户权限。请手测标题/任务栏图标、默认GIF、导入/框选/类型/增强/旋转和PNG/GIF，以及无Python机器完整流程。单文件首次解压性能未测。
+
+原创图标源：`tools/branding/generate_icon.py`（统一几何），运行生成app/assets中的SVG/PNG/ICO；ICO含16至256px九档。未使用第三方商标。窗口大小与业务规则不变，以下为功能和历史记录。
+
+## 当前旋转流程（覆盖历史框选旋转）
+先框选并提取，再展开透明结果下“旋转调整”；支持±45°、±1°和重置。只旋转去背景后的透明母版，扩边后更新预览及导出，最终尺寸缩放在旋转之后。重新提取或导入归零。框选窗口仅保留框选/缩放/拖动。请手测滑块、透明边缘、重置、重新提取以及PNG/GIF与预览一致性。
+
+## 框选旋转矫正
+现有框选窗口支持-45°至45°滑块、±1°及重置旋转（正角逆时针）。先调角度，等预览完成后框选并确认；改变角度会清旧框。旋转从完整原图进行并扩边，再按旋转图坐标裁切，不旋转低分辨率导出。取消不提交；重新打开恢复已确认角度，新导入归零。请手测边缘内容、缩放/抓手、确认与取消、大A4图滑块响应。窗口大小不变，窄窗工具栏自然换行。
+
 ## 浅彩识别与蓝章亮度
 分类纳入更浅的连贯彩色笔迹，忽略中性行带对彩色行带计数的影响；诊断含彩色行带、连通主体、混合判断等。蓝色主导像素改为保留输入白底外观的RGB/Alpha分解，红色路径不变。手动类型仍可兜底；真实章图请检查自动结果、内部文字、细线、透明边缘与白底预览。
 

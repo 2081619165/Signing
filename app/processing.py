@@ -56,10 +56,10 @@ def gif_quality(alpha,mask):
 
 class Session:
     def __init__(self):
-        self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
 
     def load(self, name, data, source=None):
-        self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
         if Path(name).suffix.lower() not in {'.png','.jpg','.jpeg'}:raise ValueError('仅支持PNG/JPG/JPEG')
         if len(data)>30*1024*1024:raise ValueError('图片超过30MB')
         with Image.open(io.BytesIO(data)) as raw:
@@ -73,6 +73,16 @@ class Session:
         self.source_name=Path(name).name
         return dict(name=name,preview=preview(self.original),classification=classify(self.original))
 
+    def rotate_result(self, angle):
+        # 只从提取后的透明母版旋转，避免累计重采样和白底污染。
+        import math
+        if self.base_result is None or self.result is None:raise ValueError('请先成功提取')
+        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle) or not -45<=angle<=45:raise ValueError('旋转角度需在-45至45度')
+        rotated=self.base_result.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else self.base_result.copy()
+        self.result=rotated;self.rotation=angle
+        box=rotated.getbbox()
+        return dict(preview=preview(rotated),content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
+
     def crop(self, box):
         # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
         import math
@@ -83,11 +93,11 @@ class Session:
         coords=(math.floor(x),math.floor(y),math.ceil(r),math.ceil(b))
         if r-x<4 or b-y<4:raise ValueError('选区宽高至少4个原图像素')
         cropped=self.full.crop(coords)
-        self.original=cropped;self.crop_box=list(coords);self.result=None
+        self.base_result=None;self.rotation=0;self.original=cropped;self.crop_box=list(coords);self.result=None
         return dict(preview=preview(cropped),box=self.crop_box,classification=classify(cropped))
 
     def process(self, enhance='standard', kind='auto'):
-        self.result=None
+        self.base_result=None;self.rotation=0;self.result=None
         if self.original is None:raise ValueError('请先导入图片')
         identification=classify(self.original)
         if kind not in {'auto','black_signature','color_seal'}:raise ValueError('无效处理类型')
@@ -108,7 +118,7 @@ class Session:
                 raise ValueError('未检测到有效彩色主体或背景残留过多，请重新框选')
         if not result.getbbox():raise ValueError('未检测到有效签名笔画，请换图检查')
         result,report=(result,dict(reason='彩色保色处理，不应用黑签增强')) if color else sharpen(result,enabled=enhance)
-        self.result=result
+        self.result=result;self.base_result=result.copy()
         box=result.getbbox()
         return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]])
 
