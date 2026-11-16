@@ -1,4 +1,7 @@
-.local-tests/
-.venv/
+
+/build/
+/dist/
+/.venv/
+/.local-tests/
 __pycache__/
 *.pyc
