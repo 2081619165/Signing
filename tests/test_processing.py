@@ -149,6 +149,73 @@ class ProcessingTests(unittest.TestCase):
             previous=a
         self.assertTrue(np.array_equal(np.asarray(base),old))
 
+    def test_classification_and_color_exports(self):
+        from algorithm import classify
+        for color in ((210,30,40),(30,60,210)):
+            image=Image.new('RGB',(200,160),'white');d=ImageDraw.Draw(image)
+            d.ellipse((30,20,170,140),outline=color,width=5)
+            self.assertEqual(classify(image)['type'],'color_seal')
+            b=io.BytesIO();image.save(b,format='PNG');s=Session()
+            self.assertEqual(s.load('seal.png',b.getvalue())['classification']['type'],'color_seal')
+            s.process();a=np.asarray(s.result)
+            self.assertTrue(((a[...,3]>0)&(a[...,3]<255)).any())
+            with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+                for kind in ('png','gif'):
+                    p=Path(folder)/('exported_seal.'+kind);s.export(p,kind,dict(unit='px',width=100,height=100))
+                    with Image.open(p) as read:
+                        pixels=np.asarray(read.convert('RGBA'));ink=pixels[pixels[...,3]>0,:3]
+                        self.assertGreater(float(np.abs(ink[:,0].astype(float)-ink[:,2]).mean()),30)
+                        self.assertEqual(read.size,(100,100))
+            d.line((20,150,180,150),fill='black',width=5)
+            self.assertEqual(classify(image)['type'],'color_seal')
+        page=Image.new('RGB',(400,560),'white');d=ImageDraw.Draw(page)
+        for y in range(30,530,40):d.line((20,y,370,y),fill='black',width=2)
+        self.assertEqual(classify(page)['type'],'uncertain')
+        b=io.BytesIO();page.save(b,format='PNG');s=Session();s.load('page.png',b.getvalue())
+        with self.assertRaises(ValueError):s.process()
+        self.assertEqual(s.crop([0,20,390,40])['classification']['type'],'black_signature')
+
+    def test_gray_seal_and_manual_safety(self):
+        from algorithm import classify
+        for bg,color in ((180,(160,20,30)),(255,(25,60,190))):
+            im=Image.new('RGB',(200,160),(bg,)*3);d=ImageDraw.Draw(im)
+            d.rectangle((25,25,175,135),outline=color,width=5)
+            d.line((0,150,199,150),fill=(60,)*3,width=2)
+            self.assertEqual(classify(im)['type'],'color_seal')
+            b=io.BytesIO();im.save(b,format='PNG');s=Session();s.load('input.png',b.getvalue());s.process()
+            a=np.asarray(s.result)
+            self.assertEqual(a[0,0,3],0);self.assertEqual(a[150,10,3],0)
+            self.assertGreater(a[25,50,3],0)
+        for im in (Image.new('RGB',(100,100),'white'),Image.fromarray(np.random.default_rng(42).integers(0,256,(100,100,3),dtype=np.uint8))):
+            b=io.BytesIO();im.save(b,format='PNG');s=Session();s.load('input.png',b.getvalue())
+            for kind in ('black_signature','color_seal'):
+                with self.assertRaises(ValueError):s.process(kind=kind)
+        im=Image.new('RGB',(200,160),'white');d=ImageDraw.Draw(im)
+        d.ellipse((30,20,170,120),outline=(200,20,30),width=4)
+        d.rectangle((10,130,190,150),fill='black')
+        b=io.BytesIO();im.save(b,format='PNG');s=Session();s.load('input.png',b.getvalue());s.process(kind='color_seal')
+        self.assertIsNotNone(s.result)
+
+    def test_pale_seal_and_blue_composite(self):
+        from algorithm import classify,extract_color
+        for color in ((180,190,220),(220,185,185)):
+            im=Image.new('RGB',(220,180),(190,)*3)
+            ImageDraw.Draw(im).ellipse((30,20,190,160),outline=color,width=4)
+            self.assertEqual(classify(im)['type'],'color_seal')
+        im=Image.new('RGB',(120,80),'white')
+        ImageDraw.Draw(im).line((10,40,110,40),fill=(100,130,200),width=3)
+        im.putpixel((20,20),(220,230,250))
+        result=extract_color(im);a=np.asarray(result)
+        back=Image.new('RGBA',im.size,'white');back.alpha_composite(result)
+        for x,y in ((40,40),(20,20)):
+            self.assertTrue(np.all(np.abs(np.array(back.getpixel((x,y))[:3])-np.array(im.getpixel((x,y))))<=1))
+        self.assertEqual(a[0,0,3],0)
+        red=Image.new('RGB',(10,10),(160,20,30));r=np.asarray(extract_color(red))[0,0]
+        normalized=np.array((160,20,30))/160
+        alpha=1-normalized.min()
+        expected=np.rint(np.r_[np.clip((normalized-(1-alpha))/alpha,0,1)*255,alpha*255]).astype('uint8')
+        self.assertTrue(np.array_equal(r,expected))
+
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()
         try:self.assertFalse(bridge.process_image()['ok'])

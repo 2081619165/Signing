@@ -8,7 +8,7 @@ import tempfile
 import threading
 from PIL import Image, ImageOps
 import numpy as np
-from algorithm import extract
+from algorithm import extract, classify, extract_color
 from sharpen import sharpen
 
 def preview(image):
@@ -30,6 +30,15 @@ def gif_image(image):
     indices=np.where(mask,np.maximum(a,1),0).astype('uint8')
     pal=Image.fromarray(indices).convert('P')
     pal.putpalette([channel for i in range(256) for channel in (255-i,)*3])
+    rgb=np.asarray(image.convert('RGB'))
+    if np.any((rgb.max(2).astype(int)-rgb.min(2))[mask]>8):
+        # 彩色分支使用255色量化，索引0专供透明；黑签原调色板保持不变。
+        white=Image.new('RGBA',image.size,'white');white.alpha_composite(image.convert('RGBA'))
+        quant=white.convert('RGB').quantize(colors=255,dither=Image.Dither.NONE)
+        indices=np.where(mask,np.asarray(quant).astype('uint16')+1,0).astype('uint8')
+        pal=Image.fromarray(indices).convert('P')
+        palette=quant.getpalette()[:765]
+        pal.putpalette([0,0,0]+palette+[0]*(765-len(palette)))
     report=gif_quality(a,mask)
     report['threshold']=threshold
     return pal,report
@@ -62,7 +71,7 @@ class Session:
         self.full=self.original.copy()
         self.source=Path(source).resolve() if source else None
         self.source_name=Path(name).name
-        return dict(name=name,preview=preview(self.original))
+        return dict(name=name,preview=preview(self.original),classification=classify(self.original))
 
     def crop(self, box):
         # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
@@ -75,14 +84,30 @@ class Session:
         if r-x<4 or b-y<4:raise ValueError('选区宽高至少4个原图像素')
         cropped=self.full.crop(coords)
         self.original=cropped;self.crop_box=list(coords);self.result=None
-        return dict(preview=preview(cropped),box=self.crop_box)
+        return dict(preview=preview(cropped),box=self.crop_box,classification=classify(cropped))
 
-    def process(self, enhance='standard'):
+    def process(self, enhance='standard', kind='auto'):
         self.result=None
         if self.original is None:raise ValueError('请先导入图片')
-        result=extract(self.original)
+        identification=classify(self.original)
+        if kind not in {'auto','black_signature','color_seal'}:raise ValueError('无效处理类型')
+        chosen=identification['type'] if kind=='auto' else kind
+        if chosen=='uncertain':raise ValueError(identification['reason'])
+        # 手动类型只改变路由，空白与随机噪声仍拒绝。
+        import cv2
+        probe=np.asarray(self.original.convert('L'))
+        edges=cv2.Laplacian(probe,cv2.CV_32F)
+        if probe.std()<.5 or (float(np.std(edges))>110 and identification['diagnostics']['density']>.4):
+            raise ValueError('图片为空白或噪声过多，无法可靠提取')
+        color=chosen=='color_seal'
+        result=extract_color(self.original) if color else extract(self.original)
+        if color:
+            alpha=np.asarray(result)[...,3]
+            n,labels,stats,_=cv2.connectedComponentsWithStats((alpha>=8).astype('uint8'),8)
+            if n<=1 or stats[1:,cv2.CC_STAT_AREA].max()<8 or (alpha>0).mean()>.65:
+                raise ValueError('未检测到有效彩色主体或背景残留过多，请重新框选')
         if not result.getbbox():raise ValueError('未检测到有效签名笔画，请换图检查')
-        result,report=sharpen(result,enabled=enhance)
+        result,report=(result,dict(reason='彩色保色处理，不应用黑签增强')) if color else sharpen(result,enabled=enhance)
         self.result=result
         box=result.getbbox()
         return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]])

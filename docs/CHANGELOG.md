@@ -1,3 +1,12 @@
+## 2026-11-16 浅彩识别与蓝色亮度保留
+仅修改app/algorithm.py浅彩分类证据、彩色行带/诊断及蓝色原RGB透明分解；tests/test_processing.py增加回归；更新README及相关docs。无黑签/增强/框选/尺寸/导出改动，无推送或EXE。
+
+## 2026-11-16 彩色识别容错与手动类型
+修改algorithm.py彩色主体判据/诊断数据及灰底归一化；processing.py增加手动类型和提取有效性保护；window.py透传类型；static HTML/JS增加手动类型选择和状态失效；更新回归及README/docs。未改黑签提取、增强、GIF/PNG导出或尺寸规则，无提交推送/EXE。
+
+## 2026-11-16 自动识别与彩色处理适配
+修改algorithm.py新增保守类型分析和彩色白纸分离；processing.py导入/裁切返回分类、process安全分支及彩色GIF量化；static/index.html/main.js增加识别提示、按钮文案/禁用和框选更新；tests补分类及保色回归。更新README及文档。不新增依赖/页面/窗口，不改业务尺寸和黑签算法，不提交推送。
+
 ## 2026-11-16 增强开关与控件美化
 修改app/static/index.html增强下拉框为默认勾选复选框；main.js显式映射standard/off并调整提示；style.css复用表单规则覆盖现有输入/下拉/复选框，统一按钮圆角与悬停/键盘焦点。更新README和相关docs。无新文件/框架、无算法或框选更改，无提交/推送/EXE。
 

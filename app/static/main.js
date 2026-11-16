@@ -33,13 +33,16 @@ const openButton=document.getElementById('open'), processButton=document.getElem
 const exportButton=document.getElementById('export');
 const original=document.getElementById('original'),processed=document.getElementById('processed');
 const workstatus=document.getElementById('workstatus');
-let busy=false,hasInput=false,hasResult=false;
+let busy=false,hasInput=false,hasResult=false,inputType="uncertain";
+function effectiveType(){return document.getElementById('kind').value==='auto'?inputType:document.getElementById('kind').value;}
+function identify(r){document.getElementById('kind').value='auto';inputType=r.classification.type;document.getElementById("identification").textContent=({black_signature:"黑色签名",color_seal:"彩色印章",uncertain:"无法可靠判断"})[inputType]+"："+r.classification.reason;processButton.textContent=inputType==="color_seal"?"提取彩色印章":inputType==="black_signature"?"提取黑色签名":"请先框选区域";}
 function updateControls(){
   document.getElementById('crop').disabled=!ready||busy||!hasInput;
-  openButton.disabled=!ready||busy;processButton.disabled=!ready||busy||!hasInput;
+  openButton.disabled=!ready||busy;processButton.disabled=!ready||busy||!hasInput||effectiveType()==="uncertain";
   exportButton.disabled=!ready||busy||!hasResult||!sizeValid;
   document.querySelectorAll('.export-settings input,.export-settings select').forEach(e=>e.disabled=busy);
-  document.getElementById('enhance').disabled=busy;
+  document.getElementById('kind').disabled=busy||!hasInput;
+  document.getElementById('enhance').disabled=busy||effectiveType()!=='black_signature';
 }
 function clearResult(){hasResult=false;processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
 async function task(action){
@@ -49,7 +52,7 @@ async function task(action){
  finally{busy=false;updateControls();}
 }
 function check(reply){if(!reply.ok)throw new Error(reply.error);return reply;}
-function accept(reply){check(reply);if(reply.cancelled)return;clearResult();hasInput=true;original.src=reply.preview;document.getElementById('filename').textContent=reply.name;document.getElementById('filename').title=reply.name;workstatus.textContent='已导入：'+reply.name;}
+function accept(reply){check(reply);if(reply.cancelled)return;clearResult();hasInput=true;identify(reply);original.src=reply.preview;document.getElementById('filename').textContent=reply.name;document.getElementById('filename').title=reply.name;workstatus.textContent='已导入：'+reply.name;}
 openButton.addEventListener('click',()=>task(async()=>{
  clearResult();hasInput=false;original.removeAttribute('src');document.getElementById('filename').textContent='未导入图片';workstatus.textContent='选择图片…';
  const reply=await window.pywebview.api.choose_image();accept(reply);
@@ -57,7 +60,7 @@ openButton.addEventListener('click',()=>task(async()=>{
 }));
 processButton.addEventListener('click',()=>task(async()=>{
  clearResult();workstatus.textContent='正在提取，请稍候…';
- const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked ? 'standard' : 'off'));
+ const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked ? 'standard' : 'off',document.getElementById('kind').value));
  processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。笔迹增强：'+r.sharpen.reason;
 }));
 exportButton.addEventListener('click',()=>task(async()=>{
@@ -124,7 +127,9 @@ dpiInput.addEventListener('input',()=>{scheduleEstimate();});
 document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';scheduleEstimate();});
 
 // 取消弹窗不触碰现有结果；确认后清空旧导出状态。
-document.getElementById('crop').addEventListener('click',()=>task(async()=>{const r=check(await window.pywebview.api.select_region());if(r.cancelled)return;original.src=r.preview;clearResult();workstatus.textContent='已框选，请点击提取黑色签名';}));
+document.getElementById('crop').addEventListener('click',()=>task(async()=>{const r=check(await window.pywebview.api.select_region());if(r.cancelled)return;original.src=r.preview;identify(r);clearResult();workstatus.textContent='已框选，已重新识别区域';}));
 
 // 开关变化清除旧结果，确保预览和导出使用同一增强设置。
 document.getElementById('enhance').addEventListener('change',()=>{clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});
+
+document.getElementById('kind').addEventListener('change',()=>{clearResult();processButton.textContent=effectiveType()==='color_seal'?'提取彩色印章':effectiveType()==='black_signature'?'提取黑色签名':'请先框选区域';workstatus.textContent='处理类型已改变，请重新提取';updateControls();});
