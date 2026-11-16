@@ -121,6 +121,18 @@ class ProcessingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):s.export(p,'gif',dict(unit='px',width=36,height=42))
             self.assertEqual(p.read_bytes(),b'existing')
 
+    def test_crop_uses_imported_original(self):
+        s=Session();s.load('input.png',self.sample());full=np.asarray(s.full).copy()
+        s.process();s.crop([10.2,20.3,100.1,90.1])
+        self.assertEqual(s.original.size,(91,71));self.assertIsNone(s.result)
+        s.crop([200,0,300,100])
+        self.assertTrue(np.array_equal(np.asarray(s.original),full[0:100,200:300]))
+        before=s.original.copy()
+        for box in ([0,0,1,1],[-1,0,20,20],[0,0,500,20],[0,0,float('nan'),20]):
+            with self.assertRaises(ValueError):s.crop(box)
+            self.assertTrue(np.array_equal(np.asarray(before),np.asarray(s.original)))
+        s.load('new.png',self.sample());self.assertIsNone(s.crop_box)
+
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()
         try:self.assertFalse(bridge.process_image()['ok'])

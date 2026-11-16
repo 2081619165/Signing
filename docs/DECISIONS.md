@@ -1,3 +1,15 @@
+## 2026-11-16 主窗口居中与表单样式
+当前定位以main.Bounds中心减弹窗半宽高，随后按同坐标系WorkingArea夹紧；取代此前优先并排策略。原有900×650默认尺寸换算、工作区限幅、非永久置顶激活均保留。表单外观只作用于export-settings，不改JS/HTML业务顺序。
+
+## 2026-11-16 框选窗口定位与激活
+最小Windows适配集中app/crop/placement.py，读取主窗口native.Bounds、Screen.FromControl(...).WorkingArea，并在UI线程设置弹窗原生Bounds；默认900×650及16间距仅一次按主窗口DeviceDpi换算。隐藏创建后loaded定位显示，避免初次错误位置闪现；Show/BringToFront/Activate且on_top=False。会话锁继续阻止重复创建，active引用支持已有窗口激活并在closed清理。
+
+## 2026-11-16 框选窗口交互优化
+继续使用现有crop模块。显示坐标由scale和offsetX/Y共同决定，选区仍存原图坐标；鼠标缩放以锚点不变反算偏移，适应窗口仅重算比例与居中位置。画布overflow hidden，由Space抓手平移；工具栏和底栏flex-shrink:0。Windows现有WinForms依赖提供鼠标所在屏幕WorkingArea，不引入依赖。
+
+## 2026-11-16 独立框选窗口
+框选作为app/crop独立窗口/受限桥接，主桥接在会话锁内等待弹窗关闭，主界面busy禁用业务操作。保存EXIF归正及白底合成后的完整RGB原图；单独工作副本用于裁切及V1。浮点原图坐标左上floor、右下ceil，边界及最小尺寸校验后才提交。取消/关闭不触碰原会话。全图快照通过内联data URL，无新增HTTP服务或依赖。
+
 ## 2026-11-15 GIF浅笔修复（覆盖历史固定128规则）
 GIF采用灰度不透明索引表达原黑RGB+Alpha在白底的灰度，0索引透明；避免所有保留像素变黑。门限为有效Alpha>=4的95分位×20%，限制4至32；必要时逐级降低至4以争取95%参考覆盖和墨量。最终重读硬门槛90%。不膨胀、不连线、不重复采样。低Alpha及噪点仍有歧义，灰度GIF深底外观不等同连续Alpha PNG。
 

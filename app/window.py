@@ -58,7 +58,7 @@ class Bridge:
     def choose_image(self):
         def action():
             import webview
-            self._session.original=None;self._session.result=None
+            self._session.full=None;self._session.crop_box=None;self._session.original=None;self._session.result=None
             selected=self._window.create_file_dialog(webview.FileDialog.OPEN,allow_multiple=False,file_types=('Images (*.png;*.jpg;*.jpeg)',))
             if not selected:return {'cancelled':True}
             p=Path(selected[0]);return self._session.load(p.name,p.read_bytes(),str(p))
@@ -67,9 +67,20 @@ class Bridge:
     def import_image(self, name, encoded):
         def action():
             import base64
-            self._session.original=None;self._session.result=None
+            self._session.full=None;self._session.crop_box=None;self._session.original=None;self._session.result=None
             if len(encoded)>42*1024*1024:raise ValueError('图片超过大小限制')
             return self._session.load(name,base64.b64decode(encoded,validate=True))
+        return self._run(action)
+
+    def select_region(self):
+        from crop import activate_existing
+        if activate_existing():return dict(ok=True,cancelled=True)
+        def action():
+            from crop import select
+            if self._session.full is None:raise ValueError('请先导入图片')
+            box=select(self._session.full,self._session.crop_box,self._window)
+            if box is None:return dict(cancelled=True)
+            return self._session.crop(box)
         return self._run(action)
 
     def process_image(self, enhance=False):

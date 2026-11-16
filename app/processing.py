@@ -47,10 +47,10 @@ def gif_quality(alpha,mask):
 
 class Session:
     def __init__(self):
-        self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
 
     def load(self, name, data, source=None):
-        self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
         if Path(name).suffix.lower() not in {'.png','.jpg','.jpeg'}:raise ValueError('仅支持PNG/JPG/JPEG')
         if len(data)>30*1024*1024:raise ValueError('图片超过30MB')
         with Image.open(io.BytesIO(data)) as raw:
@@ -59,9 +59,23 @@ class Session:
             im=ImageOps.exif_transpose(raw).convert('RGBA')
             paper=Image.new('RGBA',im.size,'white');paper.alpha_composite(im)
             self.original=paper.convert('RGB')
+        self.full=self.original.copy()
         self.source=Path(source).resolve() if source else None
         self.source_name=Path(name).name
         return dict(name=name,preview=preview(self.original))
+
+    def crop(self, box):
+        # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
+        import math
+        if self.full is None:raise ValueError('请先导入图片')
+        if not isinstance(box,list) or len(box)!=4 or any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in box):raise ValueError('无效选区')
+        x,y,r,b=box
+        if not (0<=x<r<=self.full.width and 0<=y<b<=self.full.height):raise ValueError('选区越界或为空')
+        coords=(math.floor(x),math.floor(y),math.ceil(r),math.ceil(b))
+        if r-x<4 or b-y<4:raise ValueError('选区宽高至少4个原图像素')
+        cropped=self.full.crop(coords)
+        self.original=cropped;self.crop_box=list(coords);self.result=None
+        return dict(preview=preview(cropped),box=self.crop_box)
 
     def process(self, enhance=False):
         self.result=None

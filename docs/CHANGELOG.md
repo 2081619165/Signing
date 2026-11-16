@@ -1,3 +1,15 @@
+## 2026-11-16 主窗口居中与表单样式
+修改app/crop/placement.py主窗口居中计算、tests/test_crop_placement.py定位预期、app/static/style.css限定范围表单样式。同步README及相关文档。不改提取、鼠标交互、裁切、导出或尺寸/DPI逻辑，无推送/打包。
+
+## 2026-11-16 框选窗口定位与激活
+新增app/crop/placement.py及tests/test_crop_placement.py；修改crop/__init__.py为隐藏创建/加载后定位激活及活动窗口管理；window.py传主窗口并优先激活已有弹窗。未改前端内容、交互、裁切、算法或导出。无提交推送或打包。
+
+## 2026-11-16 框选窗口交互优化
+修改app/crop/__init__.py工作区尺寸及居中；index.html固定工具栏/底栏与快捷键提示；main.js新增平移、鼠标锚点缩放、默认滚轮拦截和抓手状态清理。更新README及项目文档。算法、导出、DPI、主界面不变，无提交推送和EXE。
+
+## 2026-11-16 独立框选窗口
+新增app/crop/__init__.py、index.html、main.js负责独立框选窗口；processing.py新增原图快照/内存裁切，window.py新增select_region桥接；static三文件增加标题同行按钮和确认回调；tests新增裁切回归。更新README和相关文档。未修改算法、锐化、GIF转换或尺寸换算。
+
 ## 2026-11-15 GIF浅笔修复（覆盖历史固定128规则）
 仅修改app/processing.py GIF转换和重读质量校验；tests/test_processing.py调整淡笔预期并增加回归；新增experiments/gif_alpha_compare.py。更新README及相关文档。V1、锐化、GUI、尺寸/DPI不变，无提交推送或EXE。
 

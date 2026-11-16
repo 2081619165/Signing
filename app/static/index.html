@@ -10,7 +10,7 @@
 <label><input id="ratio" type="checkbox" checked>保持宽高比例</label></div>
 <p id="estimated">处理图片后计算预计输出像素</p>
 </div>
-<div class="previews"><div><h2>图片导入</h2><button id="open" class="imagebox importbox" disabled aria-label="点击选择或更换图片"><img id="original" alt=""><span id="importhint">点击或拖入 PNG / JPG / JPEG</span></button><p id="filename">未导入图片</p></div><div><h2>透明结果</h2><div class="imagebox checker" id="resultbg"><img id="processed" alt="尚未处理"></div></div></div>
+<div class="previews"><div><h2 class="importheading">图片导入<button id="crop" disabled>框选区域</button></h2><button id="open" class="imagebox importbox" disabled aria-label="点击选择或更换图片"><img id="original" alt=""><span id="importhint">点击或拖入 PNG / JPG / JPEG</span></button><p id="filename">未导入图片</p></div><div><h2>透明结果</h2><div class="imagebox checker" id="resultbg"><img id="processed" alt="尚未处理"></div></div></div>
 <div class="toolbar options"><label><input id="enhance" type="checkbox">自然锐化（可选）</label><label><input id="white" type="checkbox">白底预览</label><span>等比适配 · 透明留白</span></div>
 <div class="toolbar actions"><button id="process" disabled>提取黑色签名</button><button id="export" disabled>导出文件</button><span id="exportstatus">未导出</span></div><p id="workstatus" role="status">请点击左侧导入图片</p></section>
 <details><summary>运行诊断</summary><p id="status">等待桥接…</p><button id="ping" disabled>测试 Python 通信</button> <button id="marker" disabled>记录观察点</button><pre id="result">等待初始化</pre></details></main><script>/* INLINE_SCRIPT */</script></body></html>

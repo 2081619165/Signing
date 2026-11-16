@@ -35,6 +35,7 @@ const original=document.getElementById('original'),processed=document.getElement
 const workstatus=document.getElementById('workstatus');
 let busy=false,hasInput=false,hasResult=false;
 function updateControls(){
+  document.getElementById('crop').disabled=!ready||busy||!hasInput;
   openButton.disabled=!ready||busy;processButton.disabled=!ready||busy||!hasInput;
   exportButton.disabled=!ready||busy||!hasResult||!sizeValid;
   document.querySelectorAll('.export-settings input,.export-settings select').forEach(e=>e.disabled=busy);
@@ -121,3 +122,6 @@ for(const el of [widthInput,heightInput])el.addEventListener('input',()=>{
 document.getElementById('ratio').addEventListener('change',e=>{if(e.target.checked){preset.value='custom';setNumber(heightInput,numeric(widthInput)/contentRatio);}scheduleEstimate();});
 dpiInput.addEventListener('input',()=>{scheduleEstimate();});
 document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';scheduleEstimate();});
+
+// 取消弹窗不触碰现有结果；确认后清空旧导出状态。
+document.getElementById('crop').addEventListener('click',()=>task(async()=>{const r=check(await window.pywebview.api.select_region());if(r.cancelled)return;original.src=r.preview;clearResult();workstatus.textContent='已框选，请点击提取黑色签名';}));
