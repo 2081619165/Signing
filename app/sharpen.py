@@ -7,7 +7,7 @@ def _structure(a):
     masks=[a>=t for t in (16,32,64,128,192)]
     return masks
 
-def sharpen(image, enabled=True):
+def legacy_sharpen(image, enabled=True):
     rgba=np.asarray(image.convert('RGBA')).copy();a=rgba[...,3].astype(np.float32)/255
     report={'enabled':enabled,'applied':False,'fallback':False}
     if not enabled or not np.any(a):
@@ -37,4 +37,28 @@ def sharpen(image, enabled=True):
     if not invariant or mass_change>.01:
         report.update(fallback=True,reason='structure_or_ink_mass_changed');return image.copy(),report
     rgba[...,3]=b;report.update(applied=bool(np.any(b!=old)),reason='accepted')
+    return Image.fromarray(rgba),report
+
+
+def sharpen(image, enabled='standard'):
+    """连续墨量映射：保留透明范围与细笔，不做边缘扩张。"""
+    level={False:'off',True:'standard'}.get(enabled,enabled)
+    gains={'off':0,'light':.6,'standard':1.2,'strong':2.0}
+    if level not in gains:raise ValueError('无效笔迹增强档位')
+    rgba=np.asarray(image.convert('RGBA')).copy();old=rgba[...,3].copy()
+    report=dict(level=level,enabled=level!='off',applied=False,fallback=False)
+    if level=='off' or not old.any():
+        report['reason']='关闭增强' if level=='off' else '无有效笔迹'
+        return image.copy(),report
+    # 小孤立区域保持不变，低Alpha平滑减弱增益，不硬阈值删除。
+    n,labels,stats,_=cv2.connectedComponentsWithStats((old>0).astype('uint8'),8)
+    protected=np.zeros(n,bool);protected[0]=True;protected[1:]=stats[1:,cv2.CC_STAT_AREA]<=3
+    a=old.astype(np.float32)/255
+    confidence=np.clip(old.astype(np.float32)/32,0,1)
+    mapped=1-np.power(1-a,1+gains[level]*confidence)
+    result=np.maximum(old,np.round(mapped*255).astype('uint8'))
+    result[protected[labels]]=old[protected[labels]]
+    rgba[...,3]=result
+    report.update(applied=bool(np.any(result!=old)),reason='连续笔迹加深',
+                  changed_pixels=int((result!=old).sum()),support_equal=bool(np.array_equal(old>0,result>0)))
     return Image.fromarray(rgba),report

@@ -1,3 +1,9 @@
+## 2026-11-16 增强开关与控件美化
+修改app/static/index.html增强下拉框为默认勾选复选框；main.js显式映射standard/off并调整提示；style.css复用表单规则覆盖现有输入/下拉/复选框，统一按钮圆角与悬停/键盘焦点。更新README和相关docs。无新文件/框架、无算法或框选更改，无提交/推送/EXE。
+
+## 2026-11-16 四档笔迹增强
+修改sharpen.py保留旧算法并新增四档映射；processing.py默认标准；window.py传递档位而非bool；static/index.html/main.js以同位置下拉框替代勾选并在档位变化时清旧结果要求重新提取。新增对照实验与回归测试，更新文档。V1、GIF透明色、尺寸/DPI未改，无推送或打包。
+
 ## 2026-11-16 主窗口居中与表单样式
 修改app/crop/placement.py主窗口居中计算、tests/test_crop_placement.py定位预期、app/static/style.css限定范围表单样式。同步README及相关文档。不改提取、鼠标交互、裁切、导出或尺寸/DPI逻辑，无推送/打包。
 

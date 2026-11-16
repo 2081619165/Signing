@@ -83,8 +83,8 @@ class Bridge:
             return self._session.crop(box)
         return self._run(action)
 
-    def process_image(self, enhance=False):
-        return self._run(lambda:self._session.process(bool(enhance)))
+    def process_image(self, enhance='standard'):
+        return self._run(lambda:self._session.process(enhance))
 
     def estimate_size(self, settings):
         return self._run(lambda:self._session.dimensions(settings))

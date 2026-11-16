@@ -77,7 +77,7 @@ class Session:
         self.original=cropped;self.crop_box=list(coords);self.result=None
         return dict(preview=preview(cropped),box=self.crop_box)
 
-    def process(self, enhance=False):
+    def process(self, enhance='standard'):
         self.result=None
         if self.original is None:raise ValueError('请先导入图片')
         result=extract(self.original)

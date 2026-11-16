@@ -57,8 +57,8 @@ openButton.addEventListener('click',()=>task(async()=>{
 }));
 processButton.addEventListener('click',()=>task(async()=>{
  clearResult();workstatus.textContent='正在提取，请稍候…';
- const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked));
- processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。锐化：'+r.sharpen.reason;
+ const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked ? 'standard' : 'off'));
+ processed.src=r.preview;hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。笔迹增强：'+r.sharpen.reason;
 }));
 exportButton.addEventListener('click',()=>task(async()=>{
  const label=document.getElementById('exportstatus');label.textContent='等待保存…';
@@ -125,3 +125,6 @@ document.getElementById('format').addEventListener('change',()=>{document.getEle
 
 // 取消弹窗不触碰现有结果；确认后清空旧导出状态。
 document.getElementById('crop').addEventListener('click',()=>task(async()=>{const r=check(await window.pywebview.api.select_region());if(r.cancelled)return;original.src=r.preview;clearResult();workstatus.textContent='已框选，请点击提取黑色签名';}));
+
+// 开关变化清除旧结果，确保预览和导出使用同一增强设置。
+document.getElementById('enhance').addEventListener('change',()=>{clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});

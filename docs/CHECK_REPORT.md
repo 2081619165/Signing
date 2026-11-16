@@ -1,3 +1,9 @@
+## 2026-11-16 增强开关与控件美化
+已验证：node --check app/static/main.js通过；12项现有unittest通过，包括增强关闭一致性/标准加深及PNG/GIF/尺寸/框选定位回归。静态核对enhance为checkbox且checked，处理读取checked并传standard/off；change继续清旧结果。只改static三文件及说明文档，框选窗口/Python算法无修改。未验证：实际WebView复选交互、视觉、焦点/悬停、窗口缩放下布局和滚动；自动测试不代表GUI通过。失败：当前无自动检查失败。
+
+## 2026-11-16 四档笔迹增强
+已验证：12项unittest通过，新增四档单调加深、关闭逐像素一致、透明/细线支持范围不变、孤立微点不增强、输入不被修改；原有V1及导出回归通过。node --check和compileall通过。运行experiments/ink_enhancement_compare.py，三组合成灰纸折线（墨色170/110/25），旧算法均clear_severe_blur_or_noise、像素差0；生成各档原生PNG、统一160×80 PNG/GIF、JSON与comparison.png于.local-tests/ink-enhancement。已查看对比图：逐档加深，最浅组仍淡，未见合成线新增连接。每档使用相同增强结果导出。未验证：真实签名/复杂噪声、GUI实际交互和深色背景GIF视觉；支持范围不变不能证明视觉无增粗。失败：当前自动检查无失败。
+
 ## 2026-11-16 主窗口居中与表单样式
 已验证：11项unittest通过，更新定位断言覆盖主窗移动后中心变化，继续检查负坐标、小工作区和模拟缩放边界；compileall通过。样式静态核对：32px统一高度、7px圆角、蓝色focus、flex-wrap沿用、控件顺序未变。未验证：原生窗口居中/焦点、多屏高DPI、实际表单视觉及窄窗口换行和无额外滚动。失败：无当前自动检查失败。
 

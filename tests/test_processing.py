@@ -133,6 +133,22 @@ class ProcessingTests(unittest.TestCase):
             self.assertTrue(np.array_equal(np.asarray(before),np.asarray(s.original)))
         s.load('new.png',self.sample());self.assertIsNone(s.crop_box)
 
+    def test_ink_enhancement_levels(self):
+        from sharpen import sharpen
+        base=Image.new('RGBA',(100,40));d=ImageDraw.Draw(base)
+        d.line((5,10,90,10),fill=(0,0,0,24),width=1)
+        d.line((5,20,90,20),fill=(0,0,0,100),width=1)
+        base.putpixel((1,1),(0,0,0,8));old=np.asarray(base)
+        previous=old[...,3]
+        for level in ('off','light','standard','strong'):
+            result,report=sharpen(base,level);a=np.asarray(result)[...,3]
+            self.assertTrue(np.array_equal(a>0,old[...,3]>0))
+            self.assertTrue((a>=previous).all());self.assertEqual(a[1,1],8)
+            if level=='off':self.assertTrue(np.array_equal(np.asarray(result),old))
+            else:self.assertGreater(a[10,10],previous[10,10])
+            previous=a
+        self.assertTrue(np.array_equal(np.asarray(base),old))
+
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()
         try:self.assertFalse(bridge.process_image()['ok'])
