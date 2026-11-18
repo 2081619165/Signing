@@ -1,3 +1,6 @@
+## 2026-11-18 诊断最小加固
+仅window.py日志安全降级/操作标签/隐私堆栈/退出状态/诊断版本，crop/__init__.py用户等待补closed状态检查，tests/test_crop_placement.py补日志及关闭回调丢失回归；README及相关docs同步。无新增文件，无算法/GUI/导出修改，无提交推送打包。
+
 ## 2026-11-18 真实红章候选复核修复
 仅algorithm.py新增中等噪声候选联合复核与连贯主体保护；tests/test_processing.py新增纹理拒绝和环境变量传入真实图回归（未设置跳过，不依赖客户图片提交）；既有experiments/color_background_compare.py本地输入增加三种背景比较及Session完整流程报告。README及docs同步。无新文件，无GUI/处理机制/导出修改，不提交推送打包。
 

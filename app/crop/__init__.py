@@ -169,7 +169,12 @@ def select(image,box,parent,diag=None,timeout=45,request_id=None,validate=None):
             raise TimeoutError('框选窗口加载超过45秒，请重试并查看日志')
         if aborted.is_set():return None
         if state['error']:raise RuntimeError(state['error'])
-        if not done.is_set():done.wait()  # 正常用户框选不限时。
+        # 正常操作不限时；补查底层关闭状态，避免丢回调后桥接永久等待。
+        while not done.wait(.5):
+            window=state['window']
+            if window is not None and window.events.closed.is_set():
+                record('closed_state_recovered');done.set()
+            elif _shutdown.is_set():cancel_request()
         return state['result']
     except Exception as exc:
         record('request_exception',stage=state['stage'],exception_type=type(exc).__name__,traceback=traceback.format_exc())

@@ -6,6 +6,62 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from crop.placement import choose_bounds
 
 class PlacementTests(unittest.TestCase):
+    def test_diagnostics_write_failure_never_breaks_bridge(self):
+        from window import Diagnostics,Bridge
+        from processing import Session
+        from time import perf_counter
+        from unittest.mock import patch
+        with patch('pathlib.Path.mkdir',side_effect=PermissionError):
+            diag=Diagnostics(perf_counter())
+            self.assertEqual(diag.record('test')['event'],'test')
+            bridge=Bridge(diag);bridge._session=Session()
+            self.assertTrue(bridge._run(lambda:{'cancelled':True},'choose_image')['ok'])
+            self.assertFalse(bridge._run(lambda:(_ for _ in ()).throw(ValueError('private')),'export_image')['ok'])
+            self.assertFalse(bridge._session.lock.locked())
+        self.assertGreater(diag.write_failures,1)
+        self.assertEqual(diag.last_error_type,'PermissionError')
+
+    def test_diagnostics_operation_and_private_exception(self):
+        from window import Diagnostics,Bridge
+        from processing import Session
+        from unittest.mock import patch
+        from time import perf_counter
+        import tempfile,json
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]/'.local-tests') as folder:
+            with patch('window.ROOT',Path(folder)):diag=Diagnostics(perf_counter())
+            bridge=Bridge(diag);bridge._session=Session()
+            bridge._run(lambda:{'cancelled':True},'choose_image')
+            bridge._run(lambda:(_ for _ in ()).throw(OSError('SECRET_CUSTOMER_PATH')),'export_image')
+            diag.record('application_return',exit_code=0)
+            text=diag.path.read_text(encoding='utf-8');rows=[json.loads(line) for line in text.splitlines()]
+            self.assertNotIn('SECRET_CUSTOMER_PATH',text)
+            self.assertTrue(any(r.get('operation')=='choose_image' and r.get('stage')=='cancelled' for r in rows))
+            self.assertTrue(any(r.get('operation')=='export_image' and r.get('exception_type')=='OSError' for r in rows))
+            self.assertEqual(rows[-1]['exit_code'],0)
+
+    def test_closed_state_without_callback_releases_waiter(self):
+        import crop,threading,time
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        from PIL import Image
+        class Event:
+            def __init__(self,value=False):self.value=value
+            def __iadd__(self,handler):return self
+            def is_set(self):return self.value
+        window=SimpleNamespace(uid='missed-close',native=None,events=SimpleNamespace(closed=Event(),loaded=Event(True),shown=Event(),before_show=Event()))
+        results=[];rows=[]
+        class Log:
+            def record(self,event,**data):rows.append(event)
+        def create(*args,**kwargs):kwargs['js_api'].page_event('image_decoded');return window
+        with patch('webview.create_window',side_effect=create),patch('crop.placement.show_positioned'):
+            worker=threading.Thread(target=lambda:results.append(crop.select(Image.new('RGB',(40,40)),None,None,Log(),timeout=2)),daemon=True)
+            worker.start();deadline=time.monotonic()+2
+            while crop._active is None and time.monotonic()<deadline:time.sleep(.01)
+            window.events.closed.value=True  # 不发出closed回调。
+            worker.join(2)
+        self.assertFalse(worker.is_alive());self.assertEqual(results,[None])
+        self.assertIn('crop_closed_state_recovered',rows)
+
     def test_center_tracks_main_position(self):
         self.assertEqual(choose_bounds((0,100,960,680),(0,0,2400,1040),(900,650)),(30,115,900,650))
         self.assertEqual(choose_bounds((1200,100,960,680),(0,0,2400,1040),(900,650)),(1230,115,900,650))

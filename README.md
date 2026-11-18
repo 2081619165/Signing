@@ -1,3 +1,7 @@
+## 内部试用诊断说明（2026-11-18）
+当前适合受控内部试用，未做跨电脑EXE验收。日志仍为 `%LOCALAPPDATA%\SealKit\logs`（源码.local-tests/webview-logs）；启动标记crop_diagnostics_version=2026-11-18-hardening-v1。写日志失败不阻断业务，但目录始终不可写时可能完全没有日志。
+故障请收集：本次完整JSONL（必要时相邻一次）、故障时间/动作/最后提示、是否主窗仍响应、关闭后SealKit.exe是否残留、EXE版本/Windows架构与显示缩放、图片宽高/字节数；不要提供客户图片/Base64/姓名路径。按request查crop阶段，按operation查bridge_operation的导入/处理/导出失败类型；异常堆栈已省略敏感异常文本和路径。退出看window_closed、main_close_cleanup_returned、gui_loop_returned、application_return及线程清单；缺末项不能单独证明卡死，末项存在也不能证明进程已经结束。日志不能保证捕获强杀、断电或原生线程永久阻塞。
+
 ## 真实灰粉底红章候选复核（2026-11-18）
 中等背景噪声不立即回退，候选须同时通过低背景泄漏、外围残留、主体连贯及强笔保留复核；其他质量上限不变。现有实验命令加--input本地原图可生成.local-tests/color-background/local-diagnostic中的透明结果、三背景comparison.png及完整流程成功状态。真实图片不提交。测试可通过SEALKIT_REAL_SEAL_INPUT环境变量指定本地样本，未提供会跳过该项。当前真实226×225灰粉底红章完整流程通过，最终外圈/星形/微字视觉请用户验收；其他复杂纹理仍可能拒绝。
 

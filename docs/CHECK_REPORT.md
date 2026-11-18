@@ -1,3 +1,6 @@
+## 2026-11-18 诊断专项验证
+自动化：34项运行，33通过/1因未设置真实样本环境变量跳过。新增mkdir拒绝时日志安全返回、成功/取消业务仍完成、异常业务仍返回失败并释放锁；取消操作及导出OSError保留操作/类型且不落盘SECRET_CUSTOMER_PATH；模拟closed事件状态为真但回调缺失仍解除select等待。原有超时/主窗关闭等回归通过。app/main.py --check实际执行成功，JSONL末项application_return exit_code0、log_write_failures0、non_daemon_threads[]；仅依赖检查返回，不是GUI关闭或EXE退出实测。compileall/diff检查通过。未验证：磁盘永久挂起（而非抛异常）、原生WebView2线程卡死、EXE跨电脑生命周期、强杀/断电；不承诺内部日志能捕捉这些事件。
+
 ## 2026-11-18 真实PNG验证与多背景视觉
 已验证：用户给定PNG读取成功，Session.load→process(kind=color_seal)成功，method=local_background、候选复核全部通过。非透明24.6903%、最大组件6940、强笔保留1.0、拟合背景泄漏.02699%、8像素外围非透明.3448%；旧基线90.3166%被最终密度拒绝。真实图及对照仅.local-tests/color-background/local-diagnostic（baseline.png/local.png/comparison.png/diagnostics.json），不提交；比较图三列INPUT/BASELINE/CANDIDATE，三行white/black/checker，已目视检查外圈、星形和小字整体可见、灰粉底明显减少，未见明显新增粘连；细小断续/红点需用户原尺寸验收，黑底天然更暗。31项测试含SEALKIT_REAL_SEAL_INPUT本地实际图通过，正常红蓝逐像素基线/黑签一致、纹理空白/随机复杂背景拒绝回归通过。新增低噪纹理负例初次发现误接收，补连贯主体保护后通过。compileall/diff检查通过。未执行GUI/EXE；真实样本只此一张，无人工完整真值和跨样本泛化保证。
 

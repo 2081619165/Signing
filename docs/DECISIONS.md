@@ -1,3 +1,6 @@
+## 2026-11-18 诊断安全降级与隐私
+复用Diagnostics，不增加服务或进程。文件系统/序列化异常不传播，write_failures与last_error_type留内存并在application_return尽力上报。异常堆栈仅文件basename/行号/函数名，不记录异常文本、客户路径或源码行；浏览器js_error仅记reported。_run记录operation及received/started/completed/cancelled/failed/released，异常类型与堆栈分开。退出新增main_close_cleanup_begin/returned和application_return(退出码/非daemon线程/写日志失败计数)，不宣称记录真正进程退出。框选用户等待仅补closed状态轮询，不引入操作超时。
+
 ## 2026-11-18 受约束候选复核
 原noise_ok未过时，仅noise<=.035且color_noise<=.025、背景比例/四象限仍通过才生成候选；不改变颜色/Alpha门限。原纸张范围、强笔保留和密度保护继续执行。二次复核联合要求：背景样点Alpha>2泄漏<=1%、外围约3.5%宽边非透明<=2%、候选密度0.5%-50%、最大Alpha>=2组件>=12、存在强笔且保留>=98%。任一不满足回退基线，最终process校验不放宽。所有候选要求连贯主体>=12防散点误接收；纯白正常红蓝保留基线路径。无新增模块和人工固定红蓝RGB。
 

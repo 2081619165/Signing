@@ -20,15 +20,30 @@ class Diagnostics:
     def __init__(self, entry):
         self.entry = entry
         folder = (Path(os.environ.get('LOCALAPPDATA',str(Path.home()))) / 'SealKit' / 'logs') if getattr(sys,'frozen',False) else ROOT / '.local-tests' / 'webview-logs'
-        folder.mkdir(parents=True, exist_ok=True)
         self.path = folder / (datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.jsonl')
         self.lock = threading.Lock()
+        self.write_failures=0
+        self.last_error_type=None
+        try:folder.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:self._failed(exc)
+
+    def _failed(self,exc):
+        # 日志失败不得阻断业务；只留内存计数，禁止递归写日志。
+        self.write_failures+=1;self.last_error_type=type(exc).__name__
 
     def record(self, event, **data):
+        # 堆栈仅保留代码位置，不落盘异常文本、源代码行或客户文件路径。
+        if 'traceback' in data:
+            data['traceback']=[dict(file=Path(f.filename).name,line=f.lineno,function=f.name)
+                               for f in traceback.extract_tb(sys.exc_info()[2])]
+        if 'error' in data:data['error']='details_omitted'
         item = dict(event=event, pid=os.getpid(), thread=dict(name=threading.current_thread().name,ident=threading.get_ident(),daemon=threading.current_thread().daemon), since_entry_ms=round((perf_counter()-self.entry)*1000, 3), **data)
-        with self.lock:
-            with self.path.open('a', encoding='utf8') as f:
-                f.write(json.dumps(item, ensure_ascii=False)+'\n')
+        try:
+            with self.lock:
+                self.path.parent.mkdir(parents=True,exist_ok=True)
+                with self.path.open('a', encoding='utf8') as f:
+                    f.write(json.dumps(item, ensure_ascii=False)+'\n')
+        except Exception as exc:self._failed(exc)
         return item
 
 class Bridge:
@@ -45,26 +60,39 @@ class Bridge:
         allowed = {'js_ready', 'bridge_rtt', 'visibility', 'js_error', 'manual_marker','crop_frontend'}
         if name not in allowed or not isinstance(metrics, dict):
             raise ValueError('无效诊断事件')
+        if name=='js_error':metrics={'reported':True}  # 浏览器错误文本可能夹带客户路径。
         if name=='crop_frontend':
             metrics={k:v for k,v in metrics.items() if k in {'request','stage','ready','busy','has_input','ok','cancelled','elapsed_ms'} and isinstance(v,(str,bool,int,float))}
             if any(isinstance(v,str) and len(v)>80 for v in metrics.values()):raise ValueError('无效框选诊断')
         return self._diag.record(name, browser=metrics)
 
-    def _run(self, action):
+    def _run(self, action, operation='unspecified'):
+        started=perf_counter()
+        def record(stage,**data):
+            if self._diag:self._diag.record('bridge_operation',operation=operation,stage=stage,elapsed_ms=round((perf_counter()-started)*1000,3),**data)
+        record('received')
         if self._session is None:
+            record('rejected',reason='session_unavailable')
             return {'ok':False,'error':'业务模块尚未就绪'}
         if not self._session.lock.acquire(blocking=False):
+            record('rejected',reason='session_busy')
             return {'ok':False,'error':'正在处理，请稍候'}
         try:
-            return {'ok':True, **action()}
+            record('started')
+            response={'ok':True, **action()}
+            record('cancelled' if response.get('cancelled') else 'completed')
+            return response
         except MemoryError:
+            record('failed',exception_type='MemoryError')
             if self._diag:self._diag.record('bridge_memory_error',exception_type='MemoryError')
             return {'ok':False,'error':'图片解码或处理内存不足，请关闭其他程序或先缩小原图'}
         except Exception as exc:
+            record('failed',exception_type=type(exc).__name__)
             if self._diag:self._diag.record('bridge_action_exception',exception_type=type(exc).__name__,traceback=traceback.format_exc())
             return {'ok':False,'error':str(exc)}
         finally:
             self._session.lock.release()
+            record('released')
 
     def choose_image(self):
         def action():
@@ -75,7 +103,7 @@ class Bridge:
             p=Path(selected[0])
             if p.stat().st_size>30*1024*1024:raise ValueError('图片超过30MB')
             return self._session.load(p.name,p.read_bytes(),str(p))
-        return self._run(action)
+        return self._run(action,'choose_image')
 
     def import_image(self, name, encoded):
         def action():
@@ -83,7 +111,7 @@ class Bridge:
             self._session.base_result=None;self._session.rotation=0;self._session.full=None;self._session.crop_box=None;self._session.original=None;self._session.result=None
             if len(encoded)>42*1024*1024:raise ValueError('图片超过大小限制')
             return self._session.load(name,base64.b64decode(encoded,validate=True))
-        return self._run(action)
+        return self._run(action,'import_image')
 
     def select_region(self, request=None):
         started=perf_counter()
@@ -106,7 +134,7 @@ class Bridge:
                 record('crop_commit_begin')
                 result=self._session.crop(box)
                 record('crop_commit_end',width=self._session.original.width,height=self._session.original.height,requires_crop=self._session.requires_crop,source_crop_size=result['source_crop_size'],work_size=result['work_size']);return result
-            response=self._run(action)
+            response=self._run(action,'select_region')
             record('returned',ok=response.get('ok'),cancelled=response.get('cancelled',False))
             return response
         except Exception as exc:
@@ -114,13 +142,13 @@ class Bridge:
             return dict(ok=False,error=str(exc))
 
     def process_image(self, enhance='standard', kind='auto'):
-        return self._run(lambda:self._session.process(enhance,kind,diagnostic=self._diag.record if self._diag else None))
+        return self._run(lambda:self._session.process(enhance,kind,diagnostic=self._diag.record if self._diag else None),'process_image')
 
     def rotate_result(self, angle):
-        return self._run(lambda:self._session.rotate_result(angle))
+        return self._run(lambda:self._session.rotate_result(angle),'rotate_result')
 
     def estimate_size(self, settings):
-        return self._run(lambda:self._session.dimensions(settings))
+        return self._run(lambda:self._session.dimensions(settings),'estimate_size')
 
     def export_image(self, kind, settings=None):
         def action():
@@ -131,7 +159,7 @@ class Bridge:
             if not selected:return {'cancelled':True}
             target=selected if isinstance(selected,str) else selected[0]
             return self._session.export(target,kind,settings)
-        return self._run(action)
+        return self._run(action,'export_image')
 
 def runtime_versions():
     if sys.platform != 'win32':
@@ -156,9 +184,10 @@ def main(entry):
     parser.add_argument('--check', action='store_true', help='仅检查依赖，不创建窗口')
     args = parser.parse_args()
     diag = Diagnostics(entry)
+    exit_code=1
     print('诊断日志:', diag.path, flush=True)
     try:
-        diag.record('entry_environment', crop_diagnostics_version='2026-11-17-entry-v2',frozen=bool(getattr(sys,'frozen',False)),python=platform.python_version(), os=platform.platform())
+        diag.record('entry_environment', crop_diagnostics_version='2026-11-18-hardening-v1',frozen=bool(getattr(sys,'frozen',False)),python=platform.python_version(), os=platform.platform())
         t = perf_counter()
         import webview
         if sys.platform=='win32':
@@ -182,6 +211,7 @@ def main(entry):
             import cv2, numpy, PIL
             diag.record('image_dependencies', opencv=cv2.__version__, numpy=numpy.__version__, pillow=PIL.__version__)
             print('依赖检查完成；未创建窗口，渲染和黑屏尚未验证。')
+            exit_code=0
             return 0
         assets = Path(__file__).parent / 'static'
         html = (assets/'index.html').read_text(encoding='utf8')
@@ -197,8 +227,10 @@ def main(entry):
                                       resizable=True, background_color='#F4F6F8')
         bridge._window=window
         def cleanup_crop(*unused):
+            diag.record('main_close_cleanup_begin')
             from crop import shutdown
             shutdown(diag)
+            diag.record('main_close_cleanup_returned')
         window.events.closing+=cleanup_crop
         diag.record('window_object_created', duration_ms=(perf_counter()-t)*1000)
         for name in ['shown','loaded','minimized','maximized','restored','closed']:
@@ -213,8 +245,13 @@ def main(entry):
         webview.start(gui='edgechromium', http_server=False, debug=False, icon=str(assets.parent/'assets/sealkit.ico'))
         cleanup_crop()
         diag.record('gui_loop_returned',live_threads=[dict(name=t.name,daemon=t.daemon) for t in threading.enumerate()])
+        exit_code=0
         return 0
     except Exception as exc:
-        diag.record('fatal_error', error=repr(exc))
-        logging.exception('SealKit启动失败；请检查日志与WebView2/.NET依赖')
+        diag.record('fatal_error', exception_type=type(exc).__name__,traceback=traceback.format_exc())
+        logging.error('SealKit启动失败：%s；请检查诊断日志',type(exc).__name__)
         return 1
+    finally:
+        diag.record('application_return',exit_code=exit_code,log_write_failures=diag.write_failures,
+                    log_last_error_type=diag.last_error_type,
+                    non_daemon_threads=[t.name for t in threading.enumerate() if not t.daemon and t is not threading.current_thread()])
