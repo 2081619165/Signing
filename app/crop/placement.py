@@ -20,12 +20,13 @@ def activate(window):
     form.Invoke(Action(action))
 
 
-def show_positioned(window,parent):
+def show_positioned(window,parent,record=None):
     from System import Action
     from System.Drawing import Rectangle,Size
     from System.Windows.Forms import Screen,FormWindowState
     form=window.native
     def action():
+        if record:record("winforms_enter")
         main=parent.native
         area=Screen.FromControl(main).WorkingArea
         bounds=main.Bounds
@@ -35,6 +36,10 @@ def show_positioned(window,parent):
             (area.X,area.Y,area.Width,area.Height),(round(900*scale),round(650*scale)))
         form.WindowState=FormWindowState.Normal
         form.MinimumSize=Size(min(form.MinimumSize.Width,rect[2]),min(form.MinimumSize.Height,rect[3]))
+        if record:record("position_ready",bounds=list(rect),dpi=int(main.DeviceDpi))
         form.Bounds=Rectangle(*rect)
         form.Show();form.BringToFront();form.Activate()
+        if record:record("visible_state",visible=bool(form.Visible),focused=bool(form.ContainsFocus))
+    if record:record("winforms_invoke_begin")
     form.Invoke(Action(action))
+    if record:record("winforms_invoke_end")

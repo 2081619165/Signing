@@ -234,6 +234,209 @@ class ProcessingTests(unittest.TestCase):
         s.load('new.png',self.sample());self.assertIsNone(s.base_result)
         with self.assertRaises(ValueError):s.rotate_result(10)
 
+    def test_local_color_background_and_fallback(self):
+        from algorithm import extract_color,extract_color_baseline
+        for color in ((180,25,35),(60,90,190)):
+            im=Image.new('RGB',(200,160),'white');ImageDraw.Draw(im).ellipse((25,20,175,140),outline=color,width=3)
+            result,report=extract_color(im,local=True,with_report=True)
+            self.assertTrue(np.array_equal(np.asarray(result),np.asarray(extract_color_baseline(im))))
+        im=Image.new('RGB',(200,160),(210,)*3);ImageDraw.Draw(im).ellipse((25,20,175,140),outline=(206,202,202),width=2)
+        result,report=extract_color(im,local=True,with_report=True)
+        self.assertEqual(report['method'],'local_background')
+        a=np.asarray(result)[...,3];self.assertEqual(a[0,0],0);self.assertGreater(a[20,100],0)
+        b=io.BytesIO();im.save(b,format='PNG');session=Session();session.load('input.png',b.getvalue());session.crop([0,0,200,160]);session.process(kind='color_seal')
+        noise=Image.fromarray(np.random.default_rng(12).integers(0,256,(100,100,3),dtype=np.uint8))
+        result,report=extract_color(noise,local=True,with_report=True)
+        self.assertEqual(report['method'],'baseline')
+
+    def test_color_failure_diagnostics(self):
+        from algorithm import extract_color
+        import json
+        image=Image.new('RGB',(80,80),(210,)*3)
+        ImageDraw.Draw(image).ellipse((10,10,70,70),outline=(206,202,202),width=2)
+        b=io.BytesIO();image.save(b,format='PNG');session=Session();session.load('input.png',b.getvalue())
+        logs=[]
+        def record(event,**data):logs.append(dict(event=event,**data))
+        session.process(kind='color_seal',diagnostic=record)
+        validation=next(r for r in logs if r['stage']=='validation')
+        self.assertEqual(validation['failed_conditions'],[])
+        extraction=next(r for r in logs if r['stage']=='extraction')
+        self.assertEqual(extraction['report']['method'],'local_background')
+        self.assertNotIn('data:image',json.dumps(logs))
+        session.crop([0,0,80,80]);logs.clear();session.process(kind='color_seal',diagnostic=record)
+        extraction=next(r for r in logs if r['stage']=='extraction')
+        self.assertTrue(extraction['report']['local_requested'])
+        self.assertIn('confidence_checks',extraction['report'])
+        self.assertEqual(logs[-1]['stage'],'success')
+
+    def test_large_import_preview_and_native_crop(self):
+        from processing import LargeSource
+        image=Image.new('RGB',(4000,5100),'white')
+        ImageDraw.Draw(image).rectangle((100,200,149,249),fill=(180,20,30))
+        b=io.BytesIO();image.save(b,format='PNG');data=b.getvalue();image.close()
+        session=Session();reply=session.load('large.png',data)
+        self.assertIsInstance(session.full,LargeSource)
+        self.assertEqual(session.full.size,(4000,5100))
+        self.assertLessEqual(max(session.original.size),1600)
+        self.assertFalse(session.requires_crop)
+        self.assertNotIn('先框选',reply['classification']['reason'])
+        self.assertEqual(session.validate_crop([0,0,3000,3000]),(0,0,3000,3000))
+        session.crop([100,200,150,250]);self.assertEqual(session.original.size,(50,50))
+        self.assertEqual(session.original.getpixel((10,10)),(180,20,30))
+        self.assertFalse(session.requires_crop)
+        self.assertEqual(session.full.size,(4000,5100))
+
+    def test_large_exif_coordinates_and_decode_guard(self):
+        from unittest.mock import patch,MagicMock
+        image=Image.new('RGB',(5100,4000),'white')
+        ImageDraw.Draw(image).rectangle((0,0,99,99),fill=(20,60,190))
+        exif=Image.Exif();exif[274]=6;b=io.BytesIO();image.save(b,format='JPEG',exif=exif,quality=95);image.close()
+        session=Session();session.load('rotated.jpg',b.getvalue())
+        self.assertEqual(session.full.size,(4000,5100))
+        session.crop([3900,0,4000,100])
+        r,g,blue=session.original.getpixel((50,50));self.assertGreater(blue,r+100)
+        raw=MagicMock();raw.format='PNG';raw.width=10000;raw.height=6000
+        with patch('processing.Image.open') as opened:
+            opened.return_value.__enter__.return_value=raw
+            with self.assertRaisesRegex(ValueError,'预算'):Session().load('huge.png',b'header')
+            raw.load.assert_not_called()
+
+    def test_large_crop_bridge_then_extract_and_cancel(self):
+        from unittest.mock import patch
+        from processing import LargeSource
+        image=Image.new('RGB',(4000,5100),'white')
+        ImageDraw.Draw(image).ellipse((110,210,290,390),outline=(180,25,35),width=4)
+        stream=io.BytesIO();image.save(stream,format='PNG');image.close()
+        bridge=Bridge(None);bridge._session=Session();session=bridge._session
+        session.load('large.png',stream.getvalue())
+        before=session.original
+        with patch('crop.activate_existing',return_value=False),patch('crop.select',return_value=None):
+            self.assertTrue(bridge.select_region()['cancelled'])
+        self.assertFalse(session.requires_crop);self.assertIs(session.original,before)
+        def confirm(*args,**kwargs):
+            self.assertEqual(kwargs['validate']([0,0,3000,3000]),(0,0,3000,3000))
+            self.assertFalse(session.requires_crop);self.assertIs(session.original,before)
+            kwargs['validate']([100,200,300,400])
+            return [100,200,300,400]
+        with patch('crop.activate_existing',return_value=False),patch('crop.select',side_effect=confirm):
+            reply=bridge.select_region()
+        self.assertTrue(reply['ok']);self.assertFalse(reply['requires_crop'])
+        self.assertFalse(session.requires_crop);self.assertEqual(session.original.size,(200,200))
+        self.assertTrue(bridge.process_image('off','color_seal')['ok'])
+        session.crop([105,205,295,395]);self.assertEqual(session.original.size,(190,190))
+        self.assertFalse(session.requires_crop);self.assertIsInstance(session.full,LargeSource)
+        session.load('new.png',stream.getvalue())
+        self.assertFalse(session.requires_crop);self.assertFalse(session.whole_work_ready);self.assertIsNone(session.crop_box)
+
+    def test_crop_response_failure_does_not_commit(self):
+        from unittest.mock import patch
+        session=Session();session.load('input.png',self.sample());session.process()
+        before=session.original;result=session.result
+        with patch('processing.preview',side_effect=RuntimeError('mock preview failure')):
+            with self.assertRaises(RuntimeError):session.crop([10,10,100,100])
+        self.assertIs(session.original,before);self.assertIs(session.result,result)
+        self.assertIsNone(session.crop_box)
+
+    def test_2493mp_full_blue_seal_workflow(self):
+        from unittest.mock import patch
+        from processing import MAX_WORK_PIXELS,MAX_WORK_SIDE
+        size=(5855,4258)
+        image=Image.new('RGB',size,'white');draw=ImageDraw.Draw(image)
+        draw.ellipse((30,30,size[0]-30,size[1]-30),outline=(35,75,185),width=40)
+        draw.line((800,2000,5000,2000),fill=(35,75,185),width=20)
+        stream=io.BytesIO();image.save(stream,format='PNG');image.close()
+        bridge=Bridge(None);bridge._session=Session();session=bridge._session
+        session.load('large-seal.png',stream.getvalue())
+        # 不框选直接处理：从完整原图生成工作图，第二次处理复用缓存。
+        with patch.object(session.full,'crop',wraps=session.full.crop) as build:
+            direct=bridge.process_image('off','color_seal')
+            self.assertTrue(direct['ok'],direct)
+            self.assertTrue(bridge.process_image('off','color_seal')['ok'])
+            self.assertEqual(build.call_count,1)
+            self.assertEqual(build.call_args.args[0],(0,0,*size))
+            self.assertIsNone(session.crop_box)
+            self.assertLessEqual(session.original.width*session.original.height,MAX_WORK_PIXELS)
+        def confirm(*args,**kwargs):
+            box=[0,0,*size];kwargs['validate'](box);return box
+        with patch('crop.activate_existing',return_value=False),patch('crop.select',side_effect=confirm):
+            reply=bridge.select_region()
+        self.assertTrue(reply['ok'],reply)
+        self.assertEqual(reply['source_crop_size'],list(size))
+        self.assertEqual(session.crop_box,[0,0,*size])
+        self.assertLessEqual(session.original.width*session.original.height,MAX_WORK_PIXELS)
+        self.assertLessEqual(max(session.original.size),MAX_WORK_SIDE)
+        self.assertFalse(session.requires_crop)
+        result=bridge.process_image('off','color_seal');self.assertTrue(result['ok'],result)
+        self.assertTrue((np.asarray(session.result)[...,3]==0).any())
+        with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+            for kind in ('png','gif'):
+                path=Path(folder)/('complete.'+kind)
+                session.export(path,kind,dict(unit='px',width=180,height=130,dpi=96))
+                with Image.open(path) as exported:self.assertEqual(exported.size,(180,130))
+        session.crop([800,1980,1000,2040]);self.assertEqual(session.original.size,(200,60))
+
+    def test_memory_failure_is_reported_without_corrupting_crop(self):
+        from unittest.mock import patch
+        session=Session();session.load('input.png',self.sample());before=session.original
+        with patch.object(session.full,'crop',side_effect=MemoryError):
+            with self.assertRaisesRegex(ValueError,'内存不足'):session.crop([0,0,100,100])
+        self.assertIs(session.original,before);self.assertIsNone(session.crop_box)
+        bridge=Bridge(None);bridge._session=session
+        self.assertIn('内存不足',bridge._run(lambda:(_ for _ in ()).throw(MemoryError()))['error'])
+
+    def test_pink_textured_shadow_seals(self):
+        from algorithm import extract_color,extract_color_baseline
+        h,w=180,240;y,x=np.mgrid[:h,:w]
+        texture=np.random.default_rng(6).normal(0,1,(h,w,1))
+        paper=np.array((225,210,215))[None,None,:]-x[...,None]*.08+texture
+        mask=Image.new('L',(w,h));d=ImageDraw.Draw(mask)
+        d.ellipse((25,20,215,160),outline=255,width=3);d.line((60,90,180,90),fill=255,width=1)
+        truth=np.asarray(mask)>0
+        for color in ((180,30,45),(35,65,185)):
+            pixels=paper.copy();pixels[truth]=paper[truth]*.7+np.array(color)*.3
+            image=Image.fromarray(np.clip(pixels,0,255).astype('uint8'))
+            result,report=extract_color(image,local=True,with_report=True)
+            a=np.asarray(result)[...,3]
+            self.assertEqual(report['method'],'local_background',report)
+            self.assertGreater((a[truth]>0).mean(),.98)
+            self.assertLess((a[~truth]>0).mean(),.03)
+            b=io.BytesIO();image.save(b,format='PNG');session=Session();session.load('input.png',b.getvalue())
+            session.process(kind='color_seal');self.assertIsNotNone(session.result)
+        # 有纹理的偏色纸张本身不是印章，不应作为可用结果放行。
+        blank=Image.fromarray(np.clip(paper,0,255).astype('uint8'));b=io.BytesIO();blank.save(b,format='PNG')
+        session=Session();session.load('input.png',b.getvalue())
+        with self.assertRaises(ValueError):session.process(kind='color_seal')
+
+    def test_candidate_review_rejects_tinted_texture_without_subject(self):
+        from algorithm import extract_color
+        pixels=np.clip(np.array((225,213,216))+np.random.default_rng(52).normal(0,4,(180,240,3)),0,255).astype('uint8')
+        image=Image.fromarray(pixels)
+        result,report=extract_color(image,local=True,with_report=True)
+        self.assertTrue(report['candidate_review_requested'])
+        self.assertEqual(report['method'],'baseline')
+        if 'candidate_review_checks' in report:
+            self.assertFalse(all(report['candidate_review_checks'].values()))
+        stream=io.BytesIO();image.save(stream,format='PNG');session=Session();session.load('texture.png',stream.getvalue())
+        with self.assertRaises(ValueError):session.process(kind='color_seal')
+        mild=Image.fromarray(np.clip(np.array((225,213,216))+np.random.default_rng(52).normal(0,2,(180,240,3)),0,255).astype('uint8'))
+        _,report=extract_color(mild,local=True,with_report=True)
+        self.assertEqual(report['reason'],'candidate_subject_failed')
+        stream=io.BytesIO();mild.save(stream,format='PNG');session.load('mild.png',stream.getvalue())
+        with self.assertRaises(ValueError):session.process(kind='color_seal')
+
+    def test_optional_real_seal_candidate_review(self):
+        import os
+        path=os.environ.get('SEALKIT_REAL_SEAL_INPUT')
+        if not path:self.skipTest('真实样本由本地环境变量提供，不提交客户图片')
+        session=Session();session.load('private-input.png',Path(path).read_bytes())
+        reply=session.process(kind='color_seal');report=reply['color_report']
+        self.assertEqual(report['method'],'local_background')
+        self.assertTrue(report['candidate_review_requested'])
+        self.assertTrue(all(report['candidate_review_checks'].values()))
+        self.assertLess(report['selected_alpha']['nonzero_fraction'],.5)
+        self.assertLess(report['border_leakage'],.02)
+        self.assertGreaterEqual(report['strong_retention'],.98)
+
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()
         try:self.assertFalse(bridge.process_image()['ok'])

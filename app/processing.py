@@ -11,9 +11,58 @@ import numpy as np
 from algorithm import extract, classify, extract_color
 from sharpen import sharpen
 
+# 大图只保留压缩源；解码预算按单次16字节/像素保守估算。
+MAX_FILE_BYTES=30*1024*1024
+MAX_SOURCE_PIXELS=50_000_000
+MAX_WORK_PIXELS=2_000_000
+MAX_WORK_SIDE=3200
+
+
+def working_image(image):
+    # 原图坐标和选区不变，只限制送入算法的像素量，不放大小图。
+    import math
+    scale=min(1,math.sqrt(MAX_WORK_PIXELS/(image.width*image.height)),MAX_WORK_SIDE/max(image.size))
+    if scale==1:return image
+    size=(max(1,int(image.width*scale)),max(1,int(image.height*scale)))
+    return image.resize(size,Image.Resampling.LANCZOS)
+
+
+def display_image(image,limit=(1600,1600)):
+    scale=min(1,limit[0]/image.width,limit[1]/image.height)
+    return image.resize((max(1,round(image.width*scale)),max(1,round(image.height*scale))),Image.Resampling.LANCZOS) if scale<1 else image.copy()
+
+
+def paper_rgb(image):
+    if image.mode=='RGB':return image.copy()
+    rgba=image.convert('RGBA');paper=Image.new('RGBA',rgba.size,'white');paper.alpha_composite(rgba)
+    return paper.convert('RGB')
+
+
+class LargeSource:
+    """原图坐标不变，框选显示只用缓存预览；确认后才解码裁切。"""
+    def __init__(self,data,size,display):
+        self.data=data;self.size=size;self.width,self.height=size;self.display=display
+    def resize(self,size,resample=Image.Resampling.LANCZOS):
+        return self.display.resize(size,resample)
+    def crop(self,box):
+        # PNG/JPEG裁切仍需解码，限制源尺寸和选区以约束峰值。
+        with Image.open(io.BytesIO(self.data)) as raw:
+            oriented=ImageOps.exif_transpose(raw)
+            region=oriented.crop(box)
+            work=None
+            try:
+                work=working_image(region)
+                return paper_rgb(work)
+            finally:
+                if work is not None and work is not region:work.close()
+                region.close()
+                if oriented is not raw:oriented.close()
+
+
 def preview(image):
-    im=image.copy();im.thumbnail((1200,900));stream=io.BytesIO();im.save(stream,format='PNG')
+    im=display_image(image,(1200,900));stream=io.BytesIO();im.save(stream,format='PNG')
     return 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii')
+
 
 def gif_image(image):
     """单级透明配灰度调色板；不补画、不改变尺寸。"""
@@ -56,22 +105,37 @@ def gif_quality(alpha,mask):
 
 class Session:
     def __init__(self):
-        self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.requires_crop=False;self.input_bytes=None;self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
 
     def load(self, name, data, source=None):
-        self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
+        self.requires_crop=False;self.input_bytes=None;self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
         if Path(name).suffix.lower() not in {'.png','.jpg','.jpeg'}:raise ValueError('仅支持PNG/JPG/JPEG')
-        if len(data)>30*1024*1024:raise ValueError('图片超过30MB')
+        if len(data)>MAX_FILE_BYTES:raise ValueError('图片超过30MB')
         with Image.open(io.BytesIO(data)) as raw:
             if raw.format not in {'PNG','JPEG'}:raise ValueError('文件内容不是PNG/JPEG')
-            if raw.width*raw.height>20_000_000:raise ValueError('图片超过2000万像素')
-            im=ImageOps.exif_transpose(raw).convert('RGBA')
-            paper=Image.new('RGBA',im.size,'white');paper.alpha_composite(im)
-            self.original=paper.convert('RGB')
-        self.full=self.original.copy()
+            pixels=raw.width*raw.height
+            if pixels>MAX_SOURCE_PIXELS or pixels*16>800*1024*1024:
+                raise ValueError('图片超出安全解码预算（最多5000万像素），请先在本地缩小原图')
+            large=pixels>20_000_000
+            orientation=raw.getexif().get(274,1)
+            logical_size=(raw.height,raw.width) if orientation in (5,6,7,8) else raw.size
+            if large:
+                # JPEG可先draft减少预览解码量；PNG仍需解码，但不保留全尺寸副本。
+                raw.draft('RGB',(1600,1600))
+                small=display_image(raw)
+                oriented=ImageOps.exif_transpose(small)
+                display=paper_rgb(oriented)
+            else:
+                display=paper_rgb(ImageOps.exif_transpose(raw))
+        self.input_bytes=len(data)
+        self.requires_crop=False
+        self.whole_work_ready=not large
+        self.original=working_image(display)
+        self.full=LargeSource(data,logical_size,display) if large else display.copy()
         self.source=Path(source).resolve() if source else None
         self.source_name=Path(name).name
-        return dict(name=name,preview=preview(self.original),classification=classify(self.original))
+        identification=classify(display_image(self.original))
+        return dict(name=name,preview=preview(self.original),classification=identification)
 
     def rotate_result(self, angle):
         # 只从提取后的透明母版旋转，避免累计重采样和白底污染。
@@ -83,7 +147,7 @@ class Session:
         box=rotated.getbbox()
         return dict(preview=preview(rotated),content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
 
-    def crop(self, box):
+    def validate_crop(self, box):
         # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
         import math
         if self.full is None:raise ValueError('请先导入图片')
@@ -92,35 +156,85 @@ class Session:
         if not (0<=x<r<=self.full.width and 0<=y<b<=self.full.height):raise ValueError('选区越界或为空')
         coords=(math.floor(x),math.floor(y),math.ceil(r),math.ceil(b))
         if r-x<4 or b-y<4:raise ValueError('选区宽高至少4个原图像素')
-        cropped=self.full.crop(coords)
-        self.base_result=None;self.rotation=0;self.original=cropped;self.crop_box=list(coords);self.result=None
-        return dict(preview=preview(cropped),box=self.crop_box,classification=classify(cropped))
+        return coords
 
-    def process(self, enhance='standard', kind='auto'):
+    def crop(self, box):
+        coords=self.validate_crop(box)
+        try:
+            cropped=working_image(self.full.crop(coords))
+        except MemoryError as exc:
+            raise ValueError('原图解码或裁切内存不足，请关闭其他程序或先缩小原图') from exc
+        # 预览和分类成功后一次提交，失败不留下半更新的状态。
+        image_preview=preview(cropped)
+        identification=classify(cropped)
+        self.base_result=None;self.rotation=0;self.requires_crop=False;self.original=cropped;self.crop_box=list(coords);self.result=None
+        return dict(preview=image_preview,box=self.crop_box,classification=identification,requires_crop=False,
+                    source_crop_size=[coords[2]-coords[0],coords[3]-coords[1]],work_size=list(cropped.size))
+
+    def process(self, enhance='standard', kind='auto', diagnostic=None):
         self.base_result=None;self.rotation=0;self.result=None
         if self.original is None:raise ValueError('请先导入图片')
-        identification=classify(self.original)
+        from time import perf_counter
+        import uuid
+        started=perf_counter();request=uuid.uuid4().hex[:12]
+        def log(stage,**data):
+            if diagnostic:diagnostic('color_diagnostic',request=request,stage=stage,elapsed_ms=round((perf_counter()-started)*1000,3),**data)
+        # 未框选的大图以完整原图为区域，缓存受控工作图，重复提取不反复解码。
+        if isinstance(self.full,LargeSource) and self.crop_box is None and not self.whole_work_ready:
+            log('whole_work_begin',source_size=list(self.full.size))
+            try:
+                work=self.full.crop((0,0,self.full.width,self.full.height))
+            except MemoryError as exc:
+                log('whole_work_failed',exception_type='MemoryError')
+                raise ValueError('原图解码内存不足，请关闭其他程序或先缩小原图') from exc
+            self.original=work
+            self.whole_work_ready=True
+            log('whole_work_ready',work_size=list(work.size))
+        work=working_image(self.original)
+        identification=classify(display_image(work))
+        log('classification',requested=kind,cropped=self.crop_box is not None,width=self.original.width,height=self.original.height,classification=identification)
         if kind not in {'auto','black_signature','color_seal'}:raise ValueError('无效处理类型')
         chosen=identification['type'] if kind=='auto' else kind
-        if chosen=='uncertain':raise ValueError(identification['reason'])
+        if chosen=='uncertain':
+            log('rejected',conditions=['classification_uncertain']);raise ValueError(identification['reason'])
+        log('route',chosen=chosen,local_enabled=self.crop_box is not None,work_size=list(work.size),source_crop_size=[self.crop_box[2]-self.crop_box[0],self.crop_box[3]-self.crop_box[1]] if self.crop_box else list(self.full.size))
         # 手动类型只改变路由，空白与随机噪声仍拒绝。
         import cv2
-        probe=np.asarray(self.original.convert('L'))
+        probe=np.asarray(work.convert('L'))
         edges=cv2.Laplacian(probe,cv2.CV_32F)
         if probe.std()<.5 or (float(np.std(edges))>110 and identification['diagnostics']['density']>.4):
+            log('rejected',conditions=['blank_or_noise'],gray_std=float(probe.std()),laplacian_std=float(np.std(edges)))
             raise ValueError('图片为空白或噪声过多，无法可靠提取')
         color=chosen=='color_seal'
-        result=extract_color(self.original) if color else extract(self.original)
+        color_report=None
+        if color:result,color_report=extract_color(work,local=True,with_report=True)
+        else:result=extract(work)
         if color:
+            log('extraction',report=color_report)
+            validation_started=perf_counter()
             alpha=np.asarray(result)[...,3]
-            n,labels,stats,_=cv2.connectedComponentsWithStats((alpha>=8).astype('uint8'),8)
-            if n<=1 or stats[1:,cv2.CC_STAT_AREA].max()<8 or (alpha>0).mean()>.65:
+            n,labels,stats,_=cv2.connectedComponentsWithStats((alpha>=2).astype('uint8'),8)
+            areas=stats[1:,cv2.CC_STAT_AREA]
+            supported=int(areas[areas>=2].sum())
+            density=float((alpha>0).mean())
+            # 浅笔允许多个短组件共同举证；密集区域仅可信背景可放宽。
+            density_limit=.85 if color_report['method']=='local_background' else .65
+            failed_conditions=[]
+            if n<=1:failed_conditions.append('no_component_alpha_ge2')
+            if supported<12:failed_conditions.append('supported_pixels_lt12')
+            if density>density_limit:failed_conditions.append('nonzero_density_over_limit')
+            log('validation',nonzero_fraction=density,density_limit=density_limit,
+                largest_component=int(areas.max()) if areas.size else 0,component_count=n-1,
+                supported_pixels=supported,background_residue_rejected=density>density_limit,
+                failed_conditions=failed_conditions,validation_ms=round((perf_counter()-validation_started)*1000,3))
+            if n<=1 or supported<12 or density>density_limit:
                 raise ValueError('未检测到有效彩色主体或背景残留过多，请重新框选')
         if not result.getbbox():raise ValueError('未检测到有效签名笔画，请换图检查')
-        result,report=(result,dict(reason='彩色保色处理，不应用黑签增强')) if color else sharpen(result,enabled=enhance)
+        result,report=(result,dict(reason=color_report.get('quality_warning','彩色保色处理，不应用黑签增强'))) if color else sharpen(result,enabled=enhance)
         self.result=result;self.base_result=result.copy()
+        log('success',chosen=chosen)
         box=result.getbbox()
-        return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]])
+        return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]],color_report=color_report)
 
     def dimensions(self, settings=None):
         if self.result is None:raise ValueError('请先成功处理图片')

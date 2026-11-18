@@ -1,3 +1,46 @@
+## 真实灰粉底红章候选复核（2026-11-18）
+中等背景噪声不立即回退，候选须同时通过低背景泄漏、外围残留、主体连贯及强笔保留复核；其他质量上限不变。现有实验命令加--input本地原图可生成.local-tests/color-background/local-diagnostic中的透明结果、三背景comparison.png及完整流程成功状态。真实图片不提交。测试可通过SEALKIT_REAL_SEAL_INPUT环境变量指定本地样本，未提供会跳过该项。当前真实226×225灰粉底红章完整流程通过，最终外圈/星形/微字视觉请用户验收；其他复杂纹理仍可能拒绝。
+
+## 彩章非白背景处理（2026-11-18）
+直接提取与框选后彩章均尝试可信背景模型，纯白正常红蓝保持旧基线，背景不可信会回退。有限中性纸纹与色偏按背景相对色差生成透明度；有少量疑似残留时现有状态栏提示人工检查，明显残留仍可拒绝。合成新旧对照运行experiments/color_background_compare.py，输出.local-tests/color-background。请提供本次灰粉底失败原图或本地路径（非截图）、对应裁切范围及本次JSONL；同类清晰红蓝图用于真实回归，不提交客户材料。当前仅合成验证，不宣称实际原图已解决。
+
+## 当前大图可直接提取（2026-11-18）
+符合30MiB/50MP及解码预算的大图无需先框选：自动识别可靠时直接提取，不确定时可手动选择签名或彩章。未框选以整张原图为区域，生成并缓存最多200万像素/最长边3200的工作图，重复提取复用；框选则按原图坐标裁切再生成工作图。整页混合/复杂背景仍建议框选以改善准确性。所有安全预算和导出规则保留，极细文字缩放损失仍需人工检查。
+请在同事电脑用最新源码/自行打包版本测试：2493万像素蓝章不框选直接提取、同图框选提取、小图直接处理、连续导入/取消/重选/重复处理，以及加载时和框选时关闭主窗后有无残留。日志whole_work_begin/ready和source_crop_size/work_size可核对工作图；原生GUI与跨电脑尚未验证。
+
+## 历史完整大图选区处理（以上方当前规则为准）
+原图文件仍限30MiB/5000万像素及解码预算；>2000万像素先框选，可选择完整印章，不再因选区>400万被拒。原图坐标准确裁切后，算法工作图等比缩小至最多200万像素/最长边3200，小图和小选区不放大或降采样。预览/旋转/PNG与GIF均使用工作图提取结果，导出尺寸及DPI规则不变。不是保留全部原始细节的无损方案，极细文字需手动验收。PNG及最终裁切仍可能临时完整解码，低内存或异常源图可能失败并报错。
+自动验证覆盖5855×4258合成蓝章完整框选至导出，不代表用户真实图片或原生GUI通过。请手测全印章无缺边、内部文字、取消/重开/重导入，日志source_crop_size与work_size用于核对原图与工作图尺寸。
+
+## 历史大图支持范围（以上方当前规则为准）
+文件<=30MiB、原图<=5000万像素（解码预算按16字节/像素、最多800MiB估算）。超过2000万像素先显示最长边1600预览，必须框选签名/印章区域（单选区<=400万像素）；确认后才以原始分辨率解码裁切，不从预览提取。普通小图仍可直接提取。JPEG方向归正与原图坐标保持一致；不改变导出尺寸规则。
+PNG预览和最终裁切仍可能需要完整解码，这不是无限大图/零内存方案。当前实测合成20.4MP PNG/JPEG，50MP及低内存机器未实测。请选择单章/签名并留少量纸边，超预算原图需先本地缩小。大图数据不整张传给前端；框选继续使用现有小预览分块机制。
+
+## 框选全链路日志判读
+先确认本次entry_environment含 `crop_diagnostics_version=2026-11-17-entry-v2`，否则不是本轮诊断程序。源码日志.local-tests/webview-logs，EXE日志 `%LOCALAPPDATA%\SealKit\logs`。按request关联（crop_frontend在browser.request，其余顶层request），日志可能交错。
+- 没有crop_frontend click：可能未触发按钮、前端错误、桥接不可用或旧程序，不能认定子窗卡死。
+- calling_python后无crop_bridge received：检查JS桥接派发；received后停activation_check：检查已有窗口激活。
+- session_acquired后看preview_begin/preview_encoded、html_ready和create_begin；只有create_begin无created：原生创建或初始化未返回。
+- created后看native_state_after_create、page_loaded/page_ready；有传输开始无结束看image_chunk；有结束无page_image_decoded看解码/JS错误。
+- page_loaded后看show_begin、winforms_invoke_begin/enter/end、visible_state与shown，区分UI调用阻塞和实际可见。shown可能为框架临时显示事件，visible_state更有参考价值。
+- 退出看crop_shutdown_begin、parent_shutdown、cleanup_close_requested/returned、closed、request_finished、gui_loop_returned及线程清单。请求释放不代表原生资源已经关闭。
+请复现一次小图、一次故障整页图，再关主窗，保留当次完整JSONL；不要提供客户图片内容。图像只记宽高和输入字节数，线程信息不包含图片/Base64。本轮不打包，旧EXE不会自动更新诊断。
+
+## 框选不显示与退出清理复测
+主窗关闭会取消所有框选等待并正常关闭隐藏子窗；不强制结束进程。请用本轮新EXE测试：小签名/红蓝章/300DPI申请表/手机图；各重复打开取消重开；加载过程中立即关闭主窗；模拟加载失败/等45秒超时后重新打开；正常退出后检查任务管理器有无SealKit.exe残留。现场失败请保留完整当次JSONL、时间、图像宽高/文件大小，不提交客户材料。
+在既有crop_阶段日志中看最后到request_received/created/page_loaded/transfer_end/page_image_decoded/show_returned哪一项；退出另看crop_shutdown_begin、parent_shutdown、cleanup_close_requested/returned、cleanup_native_pending、closed、request_finished及gui_loop_returned存活线程清单。事件可能交错，按request关联；后台线程daemon不等于原生进程必然退出，实际需验证。
+
+## 当前大图框选加载
+当前框选以最长边1600px小预览通过桥接分块加载，HTML不包含图片；选区始终映射完整原图，提取不降分辨率。45秒内未完成准备、解码和显示会报错并尝试清理，正常显示后可不限时框选。此规则覆盖历史原图内联说明。
+请分别测试小黑签、红蓝章、300DPI整页、手机图，连续打开→取消→重开，确认框选边界与提取区域一致，失败后主窗口能继续导入。请提供故障图宽高/文件大小、发生时间和本次JSONL，不提交客户图片。源码日志.local-tests/webview-logs，EXE日志 `%LOCALAPPDATA%\SealKit\logs`，搜索crop_：request_received→preview_begin/encoded→html_ready→create_begin/created→page_loaded→show_begin/shown/show_returned→page_ready→transfer_begin/end→page_image_decoded。事件可交错，按request关联，timeout携最后阶段，exception含堆栈且不含图片。旧EXE需重新打包才包含本轮修复。
+
+## 彩章失败诊断
+使用含本轮修改的程序：导入故障图→框选章与少量纸边→手动彩章→提取，保留失败后本次JSONL。源码日志在.local-tests/webview-logs，EXE在 `%LOCALAPPDATA%\SealKit\logs`；搜索color_diagnostic，按request关联classification/route/extraction/validation/success。检查local_requested、method/reason、confidence_checks、baseline/candidate/selected_alpha、failed_conditions、density_limit和elapsed_ms。未框选时只用基线；手动类型不自动启用局部背景。
+可运行 `.venv/Scripts/python.exe experiments/color_background_compare.py --input "本地已框选图片路径"`，在.local-tests/color-background/local-diagnostic生成baseline.png、local.png和diagnostics.json（会覆盖同名），不自动提交。请只提供无敏感内容的统计日志；真实对照图片留本机。本轮不改正式算法，需凭真实日志确定是回退、Alpha过滤还是最终校验误拒。
+
+## 彩章局部背景分离
+框选区域内彩章提取会尝试保守纸张背景估计，可信度不足回退既有算法；整图直接提取仍用旧基线。浅章自动识别可能仍不确定，可手动指定彩章。实验：`.venv/Scripts/python.exe experiments/color_background_compare.py`，对照PNG/比较图/性能JSON在.local-tests/color-background。真实样本未验证；建议先框选单章并留少量纸边，检查浅字、背景残留和颜色。
+
 # SealKit · 印迹
 签名与印章提取工具。仓库及本地目录仍为Signing，历史记录中的名称不代表当前产品展示名。
 
@@ -160,3 +203,5 @@ Set-Location -LiteralPath 'D:\code\Signing'
 ```powershell
 & 'D:\code\Signing\.venv\Scripts\python.exe' -m unittest discover -s 'D:\code\Signing\tests' -v
 ```
+## 大图框选确认提示
+原图超过2000万像素时，单选区仍须不超过400万像素。超限确认会在框选窗口显示实际选区像素并要求缩小，窗口保持打开；合法确认后主窗口切换为原分辨率裁切图，再可提取。取消保留原状态。日志selection_rejected表示确认前拒绝，crop_commit_end应带requires_crop=false和裁切宽高。请手测超限→缩小→确认→提取、取消与重新导入；自动测试不代表GUI已验收。

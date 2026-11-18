@@ -1,3 +1,33 @@
+## 2026-11-18 真实红章候选复核修复
+仅algorithm.py新增中等噪声候选联合复核与连贯主体保护；tests/test_processing.py新增纹理拒绝和环境变量传入真实图回归（未设置跳过，不依赖客户图片提交）；既有experiments/color_background_compare.py本地输入增加三种背景比较及Session完整流程报告。README及docs同步。无新文件，无GUI/处理机制/导出修改，不提交推送打包。
+
+## 2026-11-18 彩章偏色纸与纹理改善
+仅修改algorithm.py背景相对彩噪估计/软Alpha/强笔保护/纸张泄漏报告，processing.py彩章启用既有模型及现有质量提示；tests增加粉底红蓝/浅线/空白负例，既有experiments/color_background_compare.py补纹理案例；README及docs同步。无新增文件，不改大图/框选/GUI布局/导出，不提交推送打包。
+
+## 2026-11-18 取消大图强制框选
+本轮修改processing.py整图工作图缓存/日志、导入分类恢复及Pillow临时对象释放；window.py导入取消时清旧base_result；crop/__init__.py关闭后清预览串；tests/test_processing.py更新直接提取/缓存及旧状态预期；README和相关docs同步。无新增文件，不改颜色核心/GUI布局/导出，无提交推送打包。
+
+## 2026-11-17 高分辨率完整选区处理
+本轮仅修改processing.py新增working_image、去除4MP选区硬拒、算法使用受控输入、报告原图选区/工作尺寸及裁切内存错误；window.py补MemoryError明确反馈及尺寸日志；tests/test_processing.py调整旧4MP预期并新增2493万像素完整链路/内存回归；README和5份docs同步。无新增文件。其余Git工作区既有改动保留；未改GUI、算法核心、导出规则，无提交推送或打包。
+
+## 2026-11-17 大图导入与原图预览分离
+本轮增量仅processing.py预览/压缩源分离、解码预算与大图选区保护，window.py选文件大小预检查，tests/test_processing.py大图/方向/预算回归，README及5份docs。无新增文件；既有experiments/color_background_compare.py未跟踪状态不属于本轮新增。其余工作区既有改动保留，算法/GUI/导出未改。
+
+## 2026-11-17 框选入口与全链路日志
+static/main.js仅框选入口添加异步结构化诊断/请求编号；window.py补Python入口/返回/异常、诊断版本与统一线程PID；crop模块补初始化/取消/确认/异常和WinForms显示日志；processing.py仅保存输入字节数供诊断；tests补入口回归，README/docs补判读。不改算法、布局、导出或打包，无提交推送。
+
+## 2026-11-17 框选生命周期与退出清理
+crop/__init__.py增加close_native/shutdown、请求登记和取消、事件状态补偿、正常清理及结束日志；window.py主窗closing和事件循环返回调用清理并记录线程清单；tests新增主窗关闭生命周期回归，更新README及docs。无算法/GUI布局/导出改动，无Git提交推送。
+
+## 2026-11-17 整页大图框选修复
+crop/__init__.py新增受限预览、分块API、后台准备、请求/阶段日志、45秒超时与并发保护；crop/main.js加载前禁确认、桥接取预览、解码事件及失败提示；window.py传现有Diagnostics；test_crop_placement.py补预览映射与失败恢复测试。更新README/docs。不改彩章/黑签/识别/旋转/导出/尺寸/GUI布局，不提交推送。
+
+## 2026-11-17 彩章失败结构化诊断
+algorithm.py细化报告与每个回退原因、Alpha过滤和背景可信统计；processing.py增加可选diagnostic回调、分类/路由/提取/校验/成功日志；window.py接现有本地日志。experiment现有脚本补--input对照，tests新增日志回归，更新README/docs。无GUI/黑签/导出/尺寸修改，无提交推送。
+
+## 2026-11-17 彩章局部背景分离
+algorithm.py保留彩章基线并增加保守局部背景包装，processing.py仅框选彩章启用新分支并调整相关有效性校验、返回color_report。新增experiments/color_background_compare.py合成对照及tests回归，更新README/docs。无GUI/识别/黑签/增强/旋转/导出/尺寸/DPI/导入上限修改，无Git提交推送。
+
 ## 2026-11-16 EXE配置复核（未打包）
 本轮仅补充正式EXE准备检查证据与打包说明，复用现有spec，不改界面/算法/功能。未运行PyInstaller、未提交推送。
 
@@ -76,3 +106,5 @@
 
 ## 同日 第一阶段
 建立规范与文档；固定两个上游提交，源码审查、七类合成输入、8项支持运行、PNG对比及20张GIF，3张淡红GIF全透明。详情见REVIEW.md。
+## 2026-11-17 大图确认流程最小修复
+修改processing.py拆出共享validate_crop并将预览/分类移到状态提交前；crop/__init__.py确认前校验、拒绝日志；window.py透传验证回调和提交状态日志；tests/test_processing.py新增大图桥接与原子提交回归。同步README及项目文档。未改算法、预览坐标、导出或GUI布局，无新增文件、无提交推送打包。

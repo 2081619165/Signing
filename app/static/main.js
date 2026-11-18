@@ -128,7 +128,13 @@ dpiInput.addEventListener('input',()=>{scheduleEstimate();});
 document.getElementById('format').addEventListener('change',()=>{document.getElementById('exportstatus').textContent='未导出';scheduleEstimate();});
 
 // 取消弹窗不触碰现有结果；确认后清空旧导出状态。
-document.getElementById('crop').addEventListener('click',()=>task(async()=>{const r=check(await window.pywebview.api.select_region());if(r.cancelled)return;original.src=r.preview;identify(r);clearResult();workstatus.textContent='已框选，已重新识别区域';}));
+// 入口日志不阻塞框选调用，日志失败也不吞掉原操作。
+document.getElementById('crop').addEventListener('click',()=>{
+ const request='crop-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9),started=performance.now();
+ const trace=(stage,extra={})=>report('crop_frontend',{request,stage,ready,busy,has_input:hasInput,elapsed_ms:performance.now()-started,...extra}).catch(console.error);
+ trace('click');if(busy||!ready){trace('guard_rejected');return;}
+ task(async()=>{trace('calling_python');try{const reply=await window.pywebview.api.select_region(request);trace('python_returned',{ok:reply.ok,cancelled:!!reply.cancelled});const r=check(reply);if(r.cancelled)return;original.src=r.preview;identify(r);clearResult();workstatus.textContent='已框选，已重新识别区域';}catch(e){trace('request_failed');throw e;}});
+});
 
 // 开关变化清除旧结果，确保预览和导出使用同一增强设置。
 document.getElementById('enhance').addEventListener('change',()=>{clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});

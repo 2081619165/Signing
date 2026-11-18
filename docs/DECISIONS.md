@@ -1,3 +1,34 @@
+## 2026-11-18 受约束候选复核
+原noise_ok未过时，仅noise<=.035且color_noise<=.025、背景比例/四象限仍通过才生成候选；不改变颜色/Alpha门限。原纸张范围、强笔保留和密度保护继续执行。二次复核联合要求：背景样点Alpha>2泄漏<=1%、外围约3.5%宽边非透明<=2%、候选密度0.5%-50%、最大Alpha>=2组件>=12、存在强笔且保留>=98%。任一不满足回退基线，最终process校验不放宽。所有候选要求连贯主体>=12防散点误接收；纯白正常红蓝保留基线路径。无新增模块和人工固定红蓝RGB。
+
+## 2026-11-18 彩章模型应用与质量提示
+processing对彩章统一请求既有背景模型，extract_color默认参数保持兼容，近白正常结果继续基线。拟合样点归一化后的彩度95分位估计color_noise：亮度残差原限仍成立，或在残差<=.035且彩度噪声<=.008时允许有限中性纹理；软Alpha门限/过渡随color_noise调整。强笔保护需相对彩差>max(.03,3*floor)，避免保护色偏背景。候选在纸张样点Alpha>2比例>15%回退，2%至15%附quality_warning并复用现有状态原因展示；现有组件/密度硬校验不放宽。不补画、不统一指定RGB，核心黑签/大图/导出未改。
+
+## 2026-11-18 框选可选、整图工作图缓存
+超过20MP只切换压缩源/预览存储策略，不再强制先框选。大图未框选时在process第一次从full范围生成工作图，保留原source/原坐标，whole_work_ready缓存防重复解码；重新导入重置缓存标记，框选继续复用源坐标裁切。工作图预算、文件/源图解码保护不变。直接彩章仍使用既有非local基线，框选才启用local，颜色规则不变。释放Pillow临时对象/预览串，不扩大UI/线程架构或使用强制结束进程。
+
+## 2026-11-17 分离原图、预览、选区和算法工作图
+原图保留完整尺寸/压缩源，框选预览<=1600边，主预览<=1200×900；选区保存原图floor/ceil坐标，不再受400万面积限制。working_image只等比缩小，算法输入<=200万像素且最长边<=3200；LargeSource先按原图裁切再缩工作图，转换RGB前缩小以减少副本。普通图片同样限制算法输入，小图像素保持不变。结果基于工作图，预览/旋转/原有尺寸导出共用；不把结果伪称原分辨率提取。不改颜色/黑签核心规则。
+仍保留：30MiB文件（拖入Base64桥接42MiB字符预检）、50MP源尺寸及16字节/像素<=800MiB解码估算、Pillow异常格式/图像保护、至少4×4选框及越界检查；>20MP仍须框选（可全选），此为流程分界而非选区拒绝。导出1至10000px单边/20MP总量及DPI规则不变。捕获内存不足时不提交半状态。
+
+## 2026-11-17 大图导入与原图预览分离
+在现有processing.py复用预览辅助并新增轻量LargeSource对象，不新增模块。小图保留现有原图流程；大图original为小预览、full为压缩源/逻辑尺寸/预览，crop模块依然读取full.size计算原图坐标并通过resize拿缓存预览。确认才ImageOps.exif_transpose原图并裁切、白底合成选区，不对预览提取；新图清状态。大图禁止直接process，即使手动类型也需框选。分类仅受限预览，不改classify/extract函数。点击导入先stat文件大小再read_bytes。
+
+## 2026-11-17 框选入口与全链路日志
+复用Diagnostics统一添加PID和线程名/ID/daemon；启动增加固定诊断版本，不引入日志模块。输入文件只记录字节数，不记路径/名称/内容；原文件大小由Session.load保存，框选使用同源大小。前端日志异步不阻塞原调用；传入随机请求ID与crop内部贯通。原生创建返回后记录native/shown/loaded状态，before_show事件尽力采集；这是可观察初始化标志，不冒充WebView2底层成功证明。
+
+## 2026-11-17 框选生命周期与退出清理
+crop请求持有取消回调，主窗closing立即设置shutdown并唤醒ready/done，后续打开被拒；prepare为daemon并在创建前后检查aborted。清理由Form.Close/BeginInvoke正常UI消息执行，不join UI/桥接线程、不os._exit或TerminateProcess。关闭后移除active/requests并释放互斥；gui_loop_returned追加存活线程清单诊断。创建后检查events.loaded/closed.is_set补偿订阅竞态，loaded幂等。
+
+## 2026-11-17 整页大图框选修复
+只在app/crop复用既有桥接与日志：预览最长边1600，页面stage仍用full原图尺寸，因此现有坐标映射不变；原图不重新解码、不做全图PNG编码、不降提取分辨率。原生创建按PyWebView要求交其GUI线程，prepare后台负责缩图/编码，45秒等待覆盖准备/页面/图片解码和显示返回。失败清理异步、晚到创建检查aborted，互斥防并发；正常显示后用户选区不限操作时长。
+
+## 2026-11-17 彩章失败结构化诊断
+复用Diagnostics.record输出color_diagnostic，每次process有随机request关联；不写路径、坐标、原图、像素矩阵或印章内容，仅汇总统计/背景均值与阈值结果。extract_color report补基线/候选/最终Alpha及阶段耗时，process在抛异常前写校验结果。实验脚本增加--input本地对照，只允许固定.local-tests输出，不自动拿历史样本当当前故障样本。
+
+## 2026-11-17 彩章局部背景分离
+现有algorithm.py保留旧函数extract_color_baseline；新增包装只local=True（Session.crop_box非空）启用，约12000有界采样二次背景曲面迭代剔除墨迹。背景样点需覆盖四象限且多数、残差/亮度可信；近白正常基线、强笔迹损失回退。按估计纸张归一化后以噪声相对软权重生成连续Alpha，不补画。彩章校验由单个Alpha>=8且面积8，改Alpha>=2多个面积>=2组件合计>=12；基线密度上限65%保留，可信局部结果85%。不取消随机噪声/空白保护。
+
 ## 2026-11-16 SealKit品牌与发布准备
 保留Signing仓库/路径及现有架构。原创几何图标由tools/branding/generate_icon.py统一源生成SVG/PNG/多尺寸ICO，不依赖第三方商标。页面图标内联data URL，窗口用webview.start(icon)，AppUserModelID为SealKit.Desktop。无既有打包配置，新增packaging/SealKit.spec白名单收集资源及WinForms/WebView/pythonnet运行文件，console=False/单文件。冻结运行日志迁移LOCALAPPDATA/SealKit/logs；资源仍按模块__file__读取。
 
@@ -93,3 +124,5 @@ GUI建议：单图打开、自动/手动类型、业务规格、锐化开关、�
 show7固定f7da5df17bda46a56bf588baa78843baa5b8779a；leopens固定4e571b3f25cc8431756476e96976c392abda398e。两者MIT允许复用及分发，实质代码须保留版权和许可；show7声明在experiments/licenses。正式分发前补THIRD-PARTY notices及依赖许可清单，Signing整体许可证尚未决定。leopens仅实验，不为它把SciPy带入正式运行层。
 
 V1局部背景估计及连续Alpha保留；V2为经验筛选+轻度Alpha反遮罩，以五级像素集合不变和墨量变化<=1%回退。保留未锐化版本和开关，不宣称恢复不存在的细节。
+## 2026-11-17 框选验证与提交顺序
+Session.validate_crop统一边界/尺寸/安全预算检查，子窗confirm通过桥接回调先检查再关闭，Session.crop提交前再次检查。保留原图坐标和400万像素选区上限。先生成裁切图、预览与分类，再一次提交original/crop_box/requires_crop/result等状态；不靠移除process安全检查解决失败。响应增加requires_crop，提交日志记录实际尺寸和状态。
