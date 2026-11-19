@@ -164,7 +164,7 @@ def extract_color(image, local=False, with_report=False):
     report['background_sample_leakage']=leakage
     if leakage>.15:
         report['reason']='background_sample_leakage_failed';return finish(baseline)
-    n,_,stats,_=cv2.connectedComponentsWithStats((new>=2).astype('uint8'),8)
+    n,labels,stats,_=cv2.connectedComponentsWithStats((new>=2).astype('uint8'),8)
     largest=int(stats[1:,cv2.CC_STAT_AREA].max()) if n>1 else 0
     report['largest_component']=largest
     if largest<12:
@@ -174,10 +174,17 @@ def extract_color(image, local=False, with_report=False):
         border=np.zeros((h,w),bool);margin=max(1,round(min(h,w)*.035))
         border[:margin]=True;border[-margin:]=True;border[:,:margin]=True;border[:,-margin:]=True
         border_leakage=float((new[border]>0).mean())
-        checks=dict(background_leakage_ok=leakage<=.01,border_ok=border_leakage<=.02,
+        border_residue=border_leakage
+        if border_leakage>.02 and leakage<=.01:
+            # 贴边圆环可占纸边，但必须有足够的内部连通像素和强笔迹作证。
+            subject=labels==1+int(np.argmax(stats[1:,cv2.CC_STAT_AREA]))
+            interior=subject&~border
+            if interior.sum()*2>=largest and (interior&strong).sum()>=max(12,.1*largest):
+                border_residue=float(((new>0)&~subject)[border].mean())
+        checks=dict(background_leakage_ok=leakage<=.01,border_ok=border_residue<=.02,
                     density_ok=.005<float((new>0).mean())<=.5,subject_ok=largest>=12,
                     strong_retention_ok=bool(strong.any() and report['strong_retention']>=.98))
-        report.update(candidate_review_checks=checks,border_leakage=border_leakage,largest_component=largest)
+        report.update(candidate_review_checks=checks,border_leakage=border_leakage,border_residue=border_residue)
         if not all(checks.values()):
             report['reason']='candidate_review_failed';return finish(baseline)
     if leakage>.02:report['quality_warning']='背景可能有少量残留，请人工检查透明预览'

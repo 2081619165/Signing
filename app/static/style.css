@@ -30,4 +30,19 @@ header{gap:12px}.brand-icon{width:32px;height:32px;flex-shrink:0}h1{letter-spaci
 button{min-height:32px}.importheading button{min-height:22px}
 section{border-color:#dce4ee;box-shadow:0 2px 8px #18365d06}
 #identification{font-size:12px;color:#526479;line-height:1.4}
-.rotation summary{font-size:13px}.rotation input[type=range]{accent-color:#245ac2;max-width:160px}.rotation output{min-width:40px}
+.rotation summary{font-size:13px}.rotation input[type=range]{accent-color:#245ac2;max-width:160px}.rotation input[type=number]{width:76px}
+.rotation .toolbar{gap:6px}.rotation button{padding:4px 8px}
+.eraser-tools[hidden],.eraser-view[hidden],.eraser-cursor[hidden]{display:none}
+.result-viewport{position:absolute;inset:0;display:flex;overflow:auto;overscroll-behavior:contain}
+.result-viewport img{flex:none;margin:auto;max-width:none;max-height:none}
+.result-viewport:has(img[hidden]){visibility:hidden}
+.result-viewport:focus-visible{outline:2px solid #3973cf;outline-offset:-2px}
+.eraser-tools{gap:6px;margin:6px 0;font-size:12px}
+.eraser-tools button{padding:4px 8px;min-height:26px}
+.eraser-tools input[type=range]{width:75px}
+.eraser-tools [role=status]{flex-basis:100%;color:#526479}
+.eraser-view{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain;padding:12px}
+.eraser-view canvas{display:block;margin:auto;touch-action:none;cursor:none}
+.eraser-view.grab,.eraser-view.grab canvas{cursor:grab}
+.eraser-view canvas.panning,.eraser-view.grab canvas.panning{cursor:grabbing}
+.eraser-cursor{position:absolute;pointer-events:none;border:1px solid white;box-shadow:0 0 0 1px #202938;border-radius:50%;transform:translate(-50%,-50%)}

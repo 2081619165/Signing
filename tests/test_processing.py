@@ -219,16 +219,27 @@ class ProcessingTests(unittest.TestCase):
     def test_transparent_rotation_before_export(self):
         s=Session();s.load('input.png',self.sample());s.process()
         base=s.result.copy();original=np.asarray(s.original).copy()
-        for angle in (-45,-13.2,0,25,45):
-            s.rotate_result(angle)
+        for angle in (-180,-135.7,-90,-13.2,0,25,90,179.9,180):
+            reply=s.rotate_result(angle)
             expected=base.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else base
+            self.assertEqual(reply['canvas_size'],expected.size)
             self.assertTrue(np.array_equal(np.asarray(s.result),np.asarray(expected)))
             self.assertTrue(np.array_equal(np.asarray(s.original),original))
             self.assertTrue((np.asarray(s.result)[...,3]==0).any())
         with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
-            for kind in ('png','gif'):s.export(Path(folder)/('rotated.'+kind),kind,dict(unit='px',width=80,height=60))
+            reference=Session()
+            reference.result=base.transpose(Image.Transpose.ROTATE_180)
+            for kind in ('png','gif'):
+                rotated_path=Path(folder)/('rotated.'+kind)
+                reference_path=Path(folder)/('reference.'+kind)
+                settings=dict(unit='px',width=80,height=60)
+                s.export(rotated_path,kind,settings)
+                reference.export(reference_path,kind,settings)
+                with Image.open(rotated_path) as actual,Image.open(reference_path) as expected:
+                    self.assertEqual(actual.size,(80,60))
+                    np.testing.assert_array_equal(np.asarray(actual.convert('RGBA')),np.asarray(expected.convert('RGBA')))
         s.rotate_result(0);self.assertTrue(np.array_equal(np.asarray(s.result),np.asarray(base)))
-        for angle in (46,float('nan'),True):
+        for angle in (-180.1,180.1,float('nan'),float('inf'),True,'90'):
             with self.assertRaises(ValueError):s.rotate_result(angle)
         s.process();self.assertEqual(s.rotation,0)
         s.load('new.png',self.sample());self.assertIsNone(s.base_result)
@@ -436,6 +447,76 @@ class ProcessingTests(unittest.TestCase):
         self.assertLess(report['selected_alpha']['nonzero_fraction'],.5)
         self.assertLess(report['border_leakage'],.02)
         self.assertGreaterEqual(report['strong_retention'],.98)
+
+    def test_optional_dark_gray_seal_at_border(self):
+        path=ROOT/'.local-tests/color-dark-gray/input.png'
+        if not path.is_file():self.skipTest('暗红章原图仅保留在本地')
+        session=Session();session.load('private-input.png',path.read_bytes())
+        report=session.process(kind='color_seal')['color_report']
+        self.assertEqual(report['method'],'local_background')
+        self.assertTrue(all(report['candidate_review_checks'].values()))
+        self.assertGreater(report['border_leakage'],.02)
+        self.assertLess(report['border_residue'],.02)
+        self.assertLessEqual(report['background_sample_leakage'],.01)
+        self.assertGreaterEqual(report['strong_retention'],.98)
+
+    def test_eraser_cancel_commit_rotate_export_and_reset(self):
+        import base64
+        for color in ((190,25,40),(40,65,185),(20,20,20)):
+            image=Image.new('RGB',(140,90),'white')
+            draw=ImageDraw.Draw(image)
+            draw.ellipse((20,12,115,75),outline=color,width=5)
+            draw.line((5,84,130,84),fill=color,width=3)
+            data=io.BytesIO()
+            image.save(data,format='PNG')
+            bridge=Bridge(None)
+            session=bridge._session=Session()
+            session.load('synthetic.png',data.getvalue())
+            kind='black_signature' if color[0]==color[1] else 'color_seal'
+            session.process('off',kind)
+            original=session.result
+            before=np.array(original)
+            edit=bridge.begin_erasure()
+            self.assertTrue(edit['ok'])
+            self.assertTrue(bridge.cancel_erasure(edit['token'])['ok'])
+            self.assertFalse(bridge.finish_erasure(edit['token'])['ok'])
+            self.assertIs(session.result,original)
+            mask=np.zeros(before.shape[:2],dtype=np.uint8)
+            mask[80:]=1
+            edit=bridge.begin_erasure()
+            parts=[]
+            for offset in range(0,edit['total'],128*1024):
+                parts.append(bridge.eraser_image_chunk(edit['token'],offset)['chunk'])
+            with Image.open(io.BytesIO(base64.b64decode(''.join(parts)))) as editor_image:
+                np.testing.assert_array_equal(np.asarray(editor_image),before)
+            packed=base64.b64encode(np.packbits(mask,bitorder='little').tobytes()).decode('ascii')
+            self.assertTrue(bridge.eraser_mask_chunk(edit['token'],0,packed)['ok'])
+            self.assertIs(session.result,original)
+            self.assertTrue(bridge.finish_erasure(edit['token'])['ok'])
+            self.assertEqual(session.result.size,original.size)
+            self.assertTrue(np.array_equal(np.array(original),before))
+            expected=before.copy()
+            expected[80:,:,3]=0
+            np.testing.assert_array_equal(np.array(session.result),expected)
+            session.rotate_result(-90)
+            np.testing.assert_array_equal(np.array(session.result),np.array(Image.fromarray(expected).transpose(Image.Transpose.ROTATE_270)))
+            session.rotate_result(0)
+            np.testing.assert_array_equal(np.array(session.result),expected)
+            with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
+                for fmt in ('png','gif'):
+                    path=Path(folder)/('edited.'+fmt)
+                    session.export(path,fmt,dict(unit='px',width=140,height=90))
+                    reference=Session()
+                    reference.result=Image.fromarray(expected)
+                    reference_path=Path(folder)/('reference.'+fmt)
+                    reference.export(reference_path,fmt,dict(unit='px',width=140,height=90))
+                    with Image.open(path) as exported,Image.open(reference_path) as expected_export:
+                        np.testing.assert_array_equal(np.asarray(exported.convert('RGBA')),
+                                                      np.asarray(expected_export.convert('RGBA')))
+            session.process('off',kind)
+            np.testing.assert_array_equal(np.array(session.result),before)
+            session.load('new.png',data.getvalue())
+            self.assertIsNone(session.result)
 
     def test_bridge_rejects_duplicate(self):
         bridge=Bridge(None);bridge._session=Session();bridge._session.lock.acquire()

@@ -1,3 +1,7 @@
+## 透明结果橡皮擦
+
+成功提取后，点击透明结果标题旁的「橡皮擦」，在右侧预览中按住左键擦除。圆形光标显示笔刷范围，滚轮缩放，中键拖动画布。工具栏可调笔刷、撤销或重做最近十次有效笔划。「完成编辑」更新预览及导出结果，并以当前方向作为旋转零点。「取消」恢复编辑前的预览。重新提取或导入会替换编辑结果。
+
 ## 内部试用诊断说明（2026-11-18）
 当前适合受控内部试用，未做跨电脑EXE验收。日志仍为 `%LOCALAPPDATA%\SealKit\logs`（源码.local-tests/webview-logs）；启动标记crop_diagnostics_version=2026-11-18-hardening-v1。写日志失败不阻断业务，但目录始终不可写时可能完全没有日志。
 故障请收集：本次完整JSONL（必要时相邻一次）、故障时间/动作/最后提示、是否主窗仍响应、关闭后SealKit.exe是否残留、EXE版本/Windows架构与显示缩放、图片宽高/字节数；不要提供客户图片/Base64/姓名路径。按request查crop阶段，按operation查bridge_operation的导入/处理/导出失败类型；异常堆栈已省略敏感异常文本和路径。退出看window_closed、main_close_cleanup_returned、gui_loop_returned、application_return及线程清单；缺末项不能单独证明卡死，末项存在也不能证明进程已经结束。日志不能保证捕获强杀、断电或原生线程永久阻塞。

@@ -137,15 +137,32 @@ class Session:
         identification=classify(display_image(self.original))
         return dict(name=name,preview=preview(self.original),classification=identification)
 
+    def commit_erasure(self, packed):
+        if self.result is None:raise ValueError('请先成功提取')
+        width,height=self.result.size
+        if len(packed)!=(width*height+7)//8:raise ValueError('擦除数据尺寸不符')
+        mask=np.unpackbits(np.frombuffer(packed,dtype=np.uint8),count=width*height,bitorder='little').reshape(height,width)
+        pixels=np.array(self.result)
+        pixels[...,3][mask!=0]=0
+        edited=Image.fromarray(pixels)
+        box=edited.getbbox()
+        if box is None:raise ValueError('结果已全部擦除，请保留有效笔迹')
+        response=dict(preview=preview(edited),canvas_size=edited.size,content_size=[box[2]-box[0],box[3]-box[1]])
+        # 当前方向成为新的旋转起点，原图与原提取对象均未就地修改。
+        self.base_result=self.result=edited
+        self.rotation=0
+        return response
+
     def rotate_result(self, angle):
         # 只从提取后的透明母版旋转，避免累计重采样和白底污染。
         import math
         if self.base_result is None or self.result is None:raise ValueError('请先成功提取')
-        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not math.isfinite(angle) or not -45<=angle<=45:raise ValueError('旋转角度需在-45至45度')
+        if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not -180<=angle<=180:raise ValueError('旋转角度需在-180至180度')
         rotated=self.base_result.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else self.base_result.copy()
-        self.result=rotated;self.rotation=angle
         box=rotated.getbbox()
-        return dict(preview=preview(rotated),content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
+        response=dict(preview=preview(rotated),canvas_size=rotated.size,content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
+        self.result=rotated;self.rotation=angle
+        return response
 
     def validate_crop(self, box):
         # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
@@ -234,7 +251,7 @@ class Session:
         self.result=result;self.base_result=result.copy()
         log('success',chosen=chosen)
         box=result.getbbox()
-        return dict(preview=preview(result),sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]],color_report=color_report)
+        return dict(preview=preview(result),canvas_size=result.size,sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]],color_report=color_report)
 
     def dimensions(self, settings=None):
         if self.result is None:raise ValueError('请先成功处理图片')

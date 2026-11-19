@@ -175,7 +175,7 @@ def select(image,box,parent,diag=None,timeout=45,request_id=None,validate=None):
             if window is not None and window.events.closed.is_set():
                 record('closed_state_recovered');done.set()
             elif _shutdown.is_set():cancel_request()
-        return state['result']
+        return None if aborted.is_set() else state['result']
     except Exception as exc:
         record('request_exception',stage=state['stage'],exception_type=type(exc).__name__,traceback=traceback.format_exc())
         raise

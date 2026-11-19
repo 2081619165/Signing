@@ -3,6 +3,7 @@ import argparse
 import base64
 import os
 import importlib.metadata
+import io
 import json
 import logging
 from pathlib import Path
@@ -51,6 +52,7 @@ class Bridge:
         self._diag = diag
         self._window = None
         self._session = None
+        self._eraser = None
 
     def ping(self):
         return self._diag.record('python_ping')
@@ -144,6 +146,66 @@ class Bridge:
     def process_image(self, enhance='standard', kind='auto'):
         return self._run(lambda:self._session.process(enhance,kind,diagnostic=self._diag.record if self._diag else None),'process_image')
 
+    def begin_erasure(self):
+        def action():
+            image=self._session.result
+            if image is None:raise ValueError('请先成功提取')
+            self._eraser=None
+            with io.BytesIO() as stream:
+                image.save(stream,format='PNG')
+                encoded=base64.b64encode(stream.getbuffer()).decode('ascii')
+            token=uuid.uuid4().hex
+            self._eraser=(token,image,encoded,bytearray())
+            if self._diag:self._diag.record('eraser_ready',width=image.width,height=image.height)
+            return dict(token=token,width=image.width,height=image.height,total=len(encoded))
+        return self._run(action,'begin_erasure')
+
+    def _erasure(self,token):
+        state=self._eraser
+        if state is None or token!=state[0] or state[1] is not self._session.result:
+            raise ValueError('当前结果已变化，请重新打开橡皮擦')
+        return state
+
+    def eraser_image_chunk(self,token,offset):
+        def action():
+            _,image,encoded,mask=self._erasure(token)
+            if type(offset) is not int or not 0<=offset<len(encoded):raise ValueError('无效图像分块')
+            chunk=encoded[offset:offset+128*1024]
+            if offset+len(chunk)==len(encoded):
+                self._eraser=(token,image,'',mask)
+            return dict(chunk=chunk)
+        return self._run(action,'eraser_image_chunk')
+
+    def eraser_mask_chunk(self,token,offset,chunk):
+        def action():
+            _,image,_,mask=self._erasure(token)
+            if type(offset) is not int or not isinstance(chunk,str) or not 0<len(chunk)<=128*1024:
+                raise ValueError('无效擦除数据分块')
+            block=base64.b64decode(chunk,validate=True)
+            if offset==0:mask.clear()
+            if offset!=len(mask) or len(mask)+len(block)>(image.width*image.height+7)//8:
+                raise ValueError('无效擦除数据范围')
+            mask.extend(block)
+            return {}
+        return self._run(action,'eraser_mask_chunk')
+
+    def finish_erasure(self,token):
+        def action():
+            _,image,_,mask=self._erasure(token)
+            result=self._session.commit_erasure(mask)
+            self._eraser=None
+            if self._diag:self._diag.record('eraser_completed',width=image.width,height=image.height)
+            return result
+        return self._run(action,'finish_erasure')
+
+    def cancel_erasure(self,token):
+        def action():
+            if self._eraser and token==self._eraser[0]:
+                self._eraser=None
+                if self._diag:self._diag.record('eraser_cancelled')
+            return {}
+        return self._run(action,'cancel_erasure')
+
     def rotate_result(self, angle):
         return self._run(lambda:self._session.rotate_result(angle),'rotate_result')
 
@@ -217,7 +279,8 @@ def main(entry):
         html = (assets/'index.html').read_text(encoding='utf8')
         html = html.replace('/* BRAND_ICON */','data:image/png;base64,'+base64.b64encode((assets.parent/'assets/sealkit.png').read_bytes()).decode('ascii'))
         html = html.replace('/* INLINE_STYLE */', (assets/'style.css').read_text(encoding='utf8'))
-        html = html.replace('/* INLINE_SCRIPT */', (assets/'main.js').read_text(encoding='utf8'))
+        html = html.replace('/* INLINE_SCRIPT */', (assets/'main.js').read_text(encoding='utf8')+'\n'+
+                            (assets/'eraser.js').read_text(encoding='utf8'))
         t = perf_counter()
         bridge=Bridge(diag)
         from processing import Session
