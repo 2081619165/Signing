@@ -99,6 +99,7 @@ class Bridge:
     def choose_image(self):
         def action():
             import webview
+            self._session.color_base=None;self._session.color_edited=False
             self._session.base_result=None;self._session.rotation=0;self._session.full=None;self._session.crop_box=None;self._session.original=None;self._session.result=None
             selected=self._window.create_file_dialog(webview.FileDialog.OPEN,allow_multiple=False,file_types=('Images (*.png;*.jpg;*.jpeg)',))
             if not selected:return {'cancelled':True}
@@ -110,6 +111,7 @@ class Bridge:
     def import_image(self, name, encoded):
         def action():
             import base64
+            self._session.color_base=None;self._session.color_edited=False
             self._session.base_result=None;self._session.rotation=0;self._session.full=None;self._session.crop_box=None;self._session.original=None;self._session.result=None
             if len(encoded)>42*1024*1024:raise ValueError('图片超过大小限制')
             return self._session.load(name,base64.b64decode(encoded,validate=True))
@@ -143,8 +145,12 @@ class Bridge:
             record('exception',exception_type=type(exc).__name__,traceback=traceback.format_exc())
             return dict(ok=False,error=str(exc))
 
-    def process_image(self, enhance='standard', kind='auto'):
-        return self._run(lambda:self._session.process(enhance,kind,diagnostic=self._diag.record if self._diag else None),'process_image')
+    def process_image(self, enhance='standard', kind='auto', color_enhance=False):
+        return self._run(lambda:self._session.process(enhance,kind,diagnostic=self._diag.record if self._diag else None,
+                                                     color_enhance=color_enhance),'process_image')
+
+    def set_color_enhancement(self, enabled, discard_edits=False):
+        return self._run(lambda:self._session.set_color_enhancement(enabled,discard_edits),'set_color_enhancement')
 
     def begin_erasure(self):
         def action():

@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SealKit 印迹 · 视觉预览</title>
+<style>
+  :root{color-scheme:light;--ink:#202939;--muted:#526075;--line:#273e621b;--blue:#234fb8;--blue-hover:#1b419e;--paper:#fff;--glass:#ffffff42;--mist:#edf2fa}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;padding:clamp(12px,3vh,42px) clamp(10px,3.5vw,56px);display:grid;align-items:center;background:radial-gradient(ellipse at 12% 18%,#f7faff 0,transparent 49%),radial-gradient(ellipse at 88% 4%,#dcdff6 0,transparent 55%),linear-gradient(145deg,#e3ecf8,#dee7f4 62%,#f0eaf4);color:var(--ink);font:0.875rem/1.5 "Segoe UI Variable","Segoe UI","Microsoft YaHei UI",sans-serif}
+  button,input,select{font:inherit;color:inherit}
+  button,select,input[type=checkbox],input[type=range]{cursor:pointer}
+  button{min-height:44px;border:1px solid transparent;border-radius:9px;background:transparent;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;transition:background 150ms,border-color 150ms}
+  button:hover{background:#284d9310}
+  button:active{background:#284d9321}
+  button:disabled{opacity:.45;cursor:default;background:transparent}
+  :focus-visible{outline:3px solid #3074dc;outline-offset:2px}
+  [hidden]{display:none!important}
+  .icon{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}
+  .window{width:100%;max-width:1450px;margin:auto;border:1px solid #fff;border-radius:20px;overflow:hidden;background:#ffffff59;backdrop-filter:blur(18px);box-shadow:0 28px 85px #24395e29,0 2px 12px #23375d14}
+  .window.max{max-width:none;border-radius:0}
+  body:has(.window.max){padding:0;align-items:start}
+  .titlebar{height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#ffffff56}
+  .brand{display:flex;align-items:center;gap:9px;padding-inline:16px}
+  .brand svg{width:22px;height:22px}
+  .brand b{font-size:.875rem;font-weight:650}
+  .brand span{color:var(--muted);font-size:.75rem}
+  .caption{display:flex;height:100%}
+  .caption button{border:0;border-radius:0;width:46px;padding:0}
+  .caption svg{width:12px;height:12px;stroke-width:1.25}
+  .caption .close:hover{color:#fff;background:#c42b1c}
+  .toolbar{padding:12px 20px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--line)}
+  .toolbar .divider{height:24px;border-left:1px solid var(--line);margin:0 4px}
+  .push{margin-inline-start:auto}
+  .secondary{background:#ffffff89;border-color:var(--line);box-shadow:0 1px 1px #24395e09}
+  .primary{background:var(--blue);color:#fff;border-color:#1b439e;box-shadow:0 2px 5px #234fb82b}
+  .primary:hover,.primary:active{background:var(--blue-hover)}
+  .primary:disabled{background:#52658e;color:#fff}
+  .work{display:grid;grid-template-columns:minmax(0,1fr) 292px;min-height:590px}
+  .workspace{padding:24px;background:linear-gradient(145deg,#f5f8fd99,#eaf0fa90);min-width:0}
+  h1,h2,h3,p{margin:0}
+  h1{font-size:1.4rem;letter-spacing:-.025em;font-weight:660}
+  h2{font-size:.94rem;font-weight:660}
+  h3{font-size:.88rem;font-weight:650}
+  .work-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .work-head p{color:var(--muted);font-size:.78rem;margin-top:3px}
+  .view-controls{display:flex;align-items:center;gap:2px;border:1px solid var(--line);background:#fff9;border-radius:11px;padding:0 2px}
+  .view-controls button{min-width:36px;padding:0 7px}
+  .view-controls output{min-width:45px;text-align:center;font-size:.77rem;font-variant-numeric:tabular-nums}
+  .panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .panel{min-width:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#ffffffc4;box-shadow:0 2px 8px #24395e08}
+  .panel header,.panel footer{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 13px;min-height:48px}
+  .panel header div{display:flex;align-items:center;gap:8px}
+  .panel header .icon{color:var(--blue)}
+  .panel footer{min-height:40px;border-top:1px solid var(--line);color:var(--muted);font-size:.75rem;font-variant-numeric:tabular-nums}
+  .file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .panel footer span:last-child{flex:none}
+  .viewport{position:relative;height:clamp(280px,35vw,434px);overflow:auto;display:grid;border-top:1px solid var(--line);background:#e8edf5;overscroll-behavior:contain}
+  .viewport.dragover{outline:3px solid var(--blue);outline-offset:-3px}
+  .viewport .art{display:block;margin:auto;max-width:none;max-height:none}
+  .source .art{box-shadow:0 5px 22px #4b556a31}
+  .checker{background:repeating-conic-gradient(#e5ebf4 0% 25%,#f7f9fd 0% 50%) 0 0/20px 20px}
+  .checker.white{background:#fff}
+  .empty{place-self:center;padding:16px;text-align:center;color:var(--muted)}
+  .status-strip{display:flex;align-items:center;gap:7px;margin-top:16px;color:var(--muted);font-size:.78rem;flex-wrap:wrap}
+  .status-strip .icon{color:var(--blue);width:15px;height:15px}
+  .inspector{background:var(--glass);backdrop-filter:blur(16px);border-left:1px solid #fff9;padding:18px}
+  .inspector-title{display:flex;align-items:center;gap:8px;padding-bottom:11px}
+  .inspector-title .icon{color:var(--blue)}
+  .group{border-top:1px solid var(--line);padding:12px 0;display:grid;gap:8px}
+  .group:last-child{padding-bottom:0}
+  .field{display:grid;gap:4px;color:var(--muted);font-size:.77rem;min-width:0}
+  select,input[type=number]{width:100%;min-width:0;background:#ffffffab;border:1px solid #53688840;border-radius:8px;min-height:37px;padding:4px 8px;color:var(--ink)}
+  input[type=checkbox],input[type=range]{accent-color:var(--blue)}
+  input[type=range]{width:100%;margin:0}
+  .row{display:flex;gap:7px;align-items:center}
+  .row>*{min-width:0}
+  .grid2,.grid3{display:grid;gap:7px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .toggle{min-height:35px;display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--ink);font-size:.81rem}
+  .toggle input{width:15px;height:15px;margin:0}
+  .toggle:has(:disabled){opacity:.58}
+  .note{font-size:.75rem;color:var(--muted)}
+  .estimate{font-variant-numeric:tabular-nums;font-weight:650;color:var(--blue);font-size:.81rem}
+  .format-note{min-height:1.1rem}
+  .rotate-buttons{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+  .rotate-buttons button{padding:0 2px;min-height:34px;font-size:.73rem}
+  .window-footer{padding:0 20px;min-height:41px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#ffffff57;border-top:1px solid var(--line);color:var(--muted);font-size:.76rem}
+  .window-footer span:first-child{display:flex;align-items:center;gap:7px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#258361}
+  .restore{margin:auto}
+  .window.collapsed .hide-on-collapse{display:none}
+  dialog{width:min(640px,calc(100% - 24px));max-height:calc(100% - 24px);padding:0;border:1px solid #fff;border-radius:16px;background:#f3f6fc;color:var(--ink);box-shadow:0 24px 80px #192b5648}
+  dialog::backdrop{background:#24375666;backdrop-filter:blur(6px)}
+  dialog header,dialog footer{padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  dialog footer{justify-content:flex-end}
+  .crop-view{height:min(48vh,370px);background:#e1e8f3;overflow:auto;display:grid;padding:12px}
+  .crop-art{position:relative;margin:auto;touch-action:none;cursor:crosshair;line-height:0}
+  .crop-art canvas{width:100%;height:auto}
+  .selection{position:absolute;border:2px solid #285fcd;background:#377df232;pointer-events:none;box-shadow:0 0 0 1px #fff}
+  .crop-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px 16px 0}
+  .editbar{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border-top:1px solid var(--line)}
+  .editbar button{min-height:36px;padding:0 6px;font-size:.75rem}
+  .editbar label{display:flex;align-items:center;gap:6px;font-size:.75rem;padding:0 5px}
+  .editbar input{width:65px}
+  .editing .art{touch-action:none;cursor:none}
+  .editing .art.grab{cursor:grab}
+  .brush-cursor{position:fixed;z-index:2;pointer-events:none;border:1px solid var(--ink);border-radius:50%;box-shadow:0 0 0 1px #fff;transform:translate(-50%,-50%)}
+  @media(max-width:1020px){.work{grid-template-columns:minmax(0,1fr) 254px}.workspace{padding:16px}.inspector{padding:14px}.panel header,.panel footer{padding-inline:9px}}
+  @media(max-width:770px){.work{grid-template-columns:1fr}.inspector{border-top:1px solid var(--line);border-left:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}.inspector-title{grid-column:1/-1}.viewport{height:300px}.toolbar,.window-footer{padding-inline:12px}}
+  @media(max-width:510px){.panels{grid-template-columns:1fr}.viewport{height:268px}.workspace{padding:12px}.toolbar .divider{display:none}.toolbar button{padding-inline:8px}.toolbar .push{margin-inline-start:0}}
+  @media(min-width:771px) and (max-height:930px){.work{min-height:0}.inspector{padding-block:13px}.group{padding:9px 0;gap:5px}.toggle{min-height:30px}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0" style="position:absolute">
+  <symbol id="open-icon" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="crop-icon" viewBox="0 0 24 24"><path d="M7 3v13a1 1 0 0 0 1 1h13M3 7h13a1 1 0 0 1 1 1v13"/></symbol>
+  <symbol id="scan-icon" viewBox="0 0 24 24"><path d="M8 4H5a1 1 0 0 0-1 1v3m12-4h3a1 1 0 0 1 1 1v3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3M8 12h8m-4-4v8"/></symbol>
+  <symbol id="export-icon" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="image-icon" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="m5 17 5-5 3 3 3-4 4 5"/></symbol>
+  <symbol id="layers-icon" viewBox="0 0 24 24"><path d="m12 4 8 5-8 5-8-5 8-5Zm-8 9 8 5 8-5m-16 4 8 5 8-5"/></symbol>
+  <symbol id="eraser-icon" viewBox="0 0 24 24"><path d="m5 14 9-9a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-8 8H9l-4-3a1.5 1.5 0 0 1 0-2Zm4-4 7 7m-5 2h9"/></symbol>
+  <symbol id="sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3m4 0h9M4 12h9m4 0h3M4 18h5m4 0h7M7 4v4m6 2v4M9 16v4"/></symbol>
+  <symbol id="info-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></symbol>
+</svg>
+<div class="window" id="window">
+  <header class="titlebar">
+    <div class="brand">
+      <svg viewBox="0 0 256 256" aria-hidden="true"><rect x="8" y="8" width="240" height="240" rx="52" fill="#245ac2"/><rect x="94" y="48" width="68" height="72" rx="24" fill="white"/><polygon points="104,102 152,102 176,164 80,164" fill="white"/><rect x="48" y="158" width="160" height="44" rx="12" fill="white"/></svg>
+      <b>SealKit</b><span>印迹</span>
+    </div>
+    <div class="caption" aria-label="预览窗口控件">
+      <button id="minimize" type="button" aria-label="最小化预览" title="最小化"><svg class="icon" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 7h10"/></svg></button>
+      <button id="maximize" type="button" aria-label="最大化预览" title="最大化"><svg class="icon" viewBox="0 0 14 14" aria-hidden="true"><path id="maxGlyph" d="M2 2h10v10H2Z"/></svg></button>
+      <button id="close" class="close" type="button" aria-label="关闭预览" title="关闭"><svg class="icon" viewBox="0 0 14 14" aria-hidden="true"><path d="m2 2 10 10M12 2 2 12"/></svg></button>
+    </div>
+  </header>
+  <nav class="toolbar hide-on-collapse" aria-label="图像操作">
+    <button id="import" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#open-icon"/></svg>导入图片</button>
+    <input id="file" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden>
+    <button id="crop" type="button"><svg class="icon" aria-hidden="true"><use href="#crop-icon"/></svg>框选区域</button>
+    <span class="divider" aria-hidden="true"></span>
+    <button id="extract" type="button"><svg class="icon" aria-hidden="true"><use href="#scan-icon"/></svg>提取图像</button>
+    <button id="sample" class="push" type="button">载入样张</button>
+    <button id="export" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#export-icon"/></svg>导出文件</button>
+  </nav>
+  <main class="work hide-on-collapse">
+    <section class="workspace" aria-labelledby="workspaceTitle">
+      <div class="work-head">
+        <div><h1 id="workspaceTitle">图像工作台</h1><p>签名与印章提取</p></div>
+        <div class="view-controls" role="group" aria-label="画布缩放">
+          <button id="zoomOut" type="button" aria-label="缩小画布">−</button>
+          <output id="zoomValue" aria-label="相对适应倍率">100%</output>
+          <button id="zoomIn" type="button" aria-label="放大画布">＋</button>
+          <button id="fit" type="button">适应</button>
+        </div>
+      </div>
+      <div class="panels">
+        <article class="panel">
+          <header><div><svg class="icon" aria-hidden="true"><use href="#image-icon"/></svg><h2>原始图像</h2></div><span class="note">支持拖入</span></header>
+          <div id="sourceView" class="viewport source" tabindex="0" aria-label="原图画布，可拖入 PNG 或 JPEG">
+            <canvas id="source" class="art" role="img" aria-label="原图预览"></canvas>
+          </div>
+          <footer><span id="fileName" class="file-name">合成印章样张.png</span><span id="sourceSize"></span></footer>
+        </article>
+        <article class="panel">
+          <header><div><svg class="icon" aria-hidden="true"><use href="#layers-icon"/></svg><h2>透明结果</h2></div><button id="eraser" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#eraser-icon"/></svg>橡皮擦</button></header>
+          <div id="resultView" class="viewport checker" tabindex="0" aria-label="透明结果画布">
+            <canvas id="result" class="art" role="img" aria-label="去背景后的图像预览"></canvas>
+            <p id="empty" class="empty" hidden>点击「提取图像」查看透明结果</p>
+          </div>
+          <div id="editbar" class="editbar" hidden>
+            <label>笔刷 <input id="brush" type="range" min="4" max="96" value="24"></label>
+            <button id="undo" type="button">撤销</button><button id="redo" type="button">重做</button>
+            <button id="hand" type="button" aria-pressed="false">抓手</button>
+            <button id="finish" class="primary" type="button">完成编辑</button><button id="cancelEdit" type="button">取消</button>
+          </div>
+          <footer><span id="backgroundLabel">棋盘格背景</span><span id="resultSize"></span></footer>
+        </article>
+      </div>
+      <p class="status-strip"><svg class="icon" aria-hidden="true"><use href="#info-icon"/></svg><span id="status" role="status" aria-live="polite">已载入合成样张 · 你也可以导入自己的图片</span></p>
+    </section>
+    <aside class="inspector" aria-labelledby="inspectorTitle">
+      <div class="inspector-title"><svg class="icon" aria-hidden="true"><use href="#sliders-icon"/></svg><h2 id="inspectorTitle">检查器</h2></div>
+      <section class="group"><h3>提取设置</h3>
+        <label class="field">处理类型<select id="kind"><option value="auto">自动识别</option><option value="black">黑色签名</option><option value="color">彩色印章</option></select></label>
+        <p class="note" id="classification">识别为彩色印章</p>
+        <div class="grid2"><label class="toggle"><input id="ink" type="checkbox" checked>笔迹增强</label><label class="toggle"><input id="color" type="checkbox">色彩增强</label></div>
+      </section>
+      <section class="group"><h3>结果调整</h3>
+        <div class="row"><input id="angle" type="range" min="-180" max="180" value="0" aria-label="旋转角度滑块"><label style="width:75px"><input id="degrees" type="number" min="-180" max="180" step="0.1" value="0" aria-label="旋转角度（度）"></label></div>
+        <div class="rotate-buttons">
+          <button type="button" data-turn="-90">−90°</button><button type="button" data-turn="-1">−1°</button><button type="button" data-turn="1">＋1°</button><button type="button" data-turn="90">＋90°</button><button type="button" data-turn="0">重置</button>
+        </div>
+        <label class="toggle"><input id="white" type="checkbox">白底预览</label>
+      </section>
+      <section class="group"><h3>导出规格</h3>
+        <div class="grid2">
+          <label class="field">格式<select id="format"><option>PNG</option><option>GIF</option></select></label>
+          <label class="field">单位<select id="unit"><option value="cm">厘米</option><option value="px">像素</option></select></label>
+        </div>
+        <label class="field">尺寸预设<select id="preset">
+          <option value="signature">手写签名 · 高 1.1 cm</option><option value="signature09">手写签名 · 高 0.9 cm</option><option value="legal">法人章 · 1.6 × 1.6 cm</option><option value="builder">建造师章 · 4 × 2.8 cm</option><option value="official" selected>公章 · 4 × 4 cm</option><option value="custom">自定义</option>
+        </select></label>
+        <div class="grid3">
+          <label class="field">宽度<input id="width" type="number" min="0.001" step="any" value="4"></label>
+          <label class="field">高度<input id="height" type="number" min="0.001" step="any" value="4"></label>
+          <label class="field">DPI<input id="dpi" type="number" min="1" max="2400" step="any" value="96"></label>
+        </div>
+        <label class="toggle"><input id="ratio" type="checkbox" checked>保持宽高比例</label>
+        <output id="estimate" class="estimate" aria-live="polite"></output>
+        <p id="formatNote" class="note format-note">等比适配，空白保留透明</p>
+      </section>
+    </aside>
+  </main>
+  <footer class="window-footer hide-on-collapse"><span><i class="dot" aria-hidden="true"></i>视觉预览 · 图像仅在本机处理</span><span>PNG / JPG / JPEG</span></footer>
+</div>
+<button id="restore" type="button" class="secondary restore" hidden>重新打开 SealKit 预览</button>
+<div id="brushCursor" class="brush-cursor" aria-hidden="true" hidden></div>
+<dialog id="cropDialog" aria-labelledby="cropTitle">
+  <header><h2 id="cropTitle">框选区域</h2><button id="cropFit" type="button" class="push">适应</button><button id="cropOut" type="button" aria-label="缩小框选画布">−</button><button id="cropIn" type="button" aria-label="放大框选画布">＋</button></header>
+  <div id="cropView" class="crop-view" tabindex="0" aria-label="框选画布">
+    <div id="cropArt" class="crop-art"><canvas id="cropCanvas" role="img" aria-label="待框选原图"></canvas><div id="selection" class="selection"></div></div>
+  </div>
+  <div class="crop-fields">
+    <label class="field">左侧<input id="cropX" type="number" min="0" step="1"></label><label class="field">上方<input id="cropY" type="number" min="0" step="1"></label>
+    <label class="field">宽度<input id="cropW" type="number" min="4" step="1"></label><label class="field">高度<input id="cropH" type="number" min="4" step="1"></label>
+  </div>
+  <footer><p class="note" style="margin-right:auto">拖动框选，或输入像素坐标</p><button id="cropReset" type="button">重置</button><button id="cropCancel" type="button">取消</button><button id="cropConfirm" type="button" class="primary">确认框选</button></footer>
+</dialog>
+<script>
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const source = $('source');
+  const result = $('result');
+  const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+  const dimensions = canvas => `${canvas.width} × ${canvas.height} px`;
+  const say = message => { $('status').textContent = message; };
+  const canvas = (width, height) => Object.assign(document.createElement('canvas'), { width, height });
+  const ctx = (target, frequent = false) => target.getContext('2d', { willReadFrequently: frequent });
+  const copy = (target, image) => {
+    target.width = image.width;
+    target.height = image.height;
+    ctx(target).drawImage(image, 0, 0);
+  };
+  let original, master, angle = 0, zoom = 1, cropZoom = 1, region;
+  let editing = false, hand = false, space = false, gesture;
+  let beforeEdit, undo = [], redo = [], strokeStart;
+  let demo = true, importRequest = 0;
+
+  // 画布生成合成样张，完全离线且不含真实印章材料。
+  function sample() {
+    const paper = canvas(980, 780);
+    const stamp = canvas(550, 550);
+    const pen = ctx(stamp);
+    pen.translate(275, 275);
+    pen.rotate(-.105);
+    pen.strokeStyle = pen.fillStyle = '#b9273e';
+    for (const [radius, width] of [[236, 12], [216, 2]]) {
+      pen.beginPath(); pen.arc(0, 0, radius, 0, Math.PI * 2); pen.lineWidth = width; pen.stroke();
+    }
+    pen.font = '700 48px "Microsoft YaHei", sans-serif';
+    pen.textAlign = 'center';
+    pen.textBaseline = 'middle';
+    [...'印迹图像实验室'].forEach((char, index) => {
+      pen.save(); pen.rotate((index - 3) * .305); pen.fillText(char, 0, -178); pen.restore();
+    });
+    pen.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const radius = i % 2 ? 43 : 98;
+      const a = i * Math.PI / 5 - Math.PI / 2;
+      pen.lineTo(Math.cos(a) * radius, Math.sin(a) * radius + 12);
+    }
+    pen.closePath(); pen.fill();
+    pen.font = '600 32px "Microsoft YaHei", sans-serif';
+    pen.fillText('合 成 样 张', 0, 146);
+    let seed = 19;
+    function random() {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    }
+    pen.resetTransform();
+    pen.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 4200; i++) {
+      pen.globalAlpha = random() * .55;
+      pen.fillRect(random() * 550, random() * 550, 1 + random() * 2, 1 + random() * 2);
+    }
+    const surface = ctx(paper);
+    const wash = surface.createLinearGradient(0, 0, 980, 780);
+    wash.addColorStop(0, '#fffaf2'); wash.addColorStop(1, '#eee4d9');
+    surface.fillStyle = wash; surface.fillRect(0, 0, 980, 780);
+    surface.fillStyle = '#8b7051';
+    for (let i = 0; i < 8500; i++) {
+      surface.globalAlpha = random() * .15;
+      surface.fillRect(random() * 980, random() * 780, 1, 1);
+    }
+    surface.globalAlpha = 1;
+    surface.drawImage(stamp, 215, 115);
+    return paper;
+  }
+
+  function scaleArt(target, view) {
+    if (target.hidden) return;
+    const inset = target === result ? 74 : 36;
+    const scale = Math.min((view.clientWidth - inset) / target.width, (view.clientHeight - inset) / target.height) * zoom;
+    target.style.width = Math.max(1, target.width * scale) + 'px';
+    target.style.height = Math.max(1, target.height * scale) + 'px';
+  }
+  function layout() {
+    scaleArt(source, $('sourceView'));
+    scaleArt(result, $('resultView'));
+    $('zoomValue').value = Math.round(zoom * 100) + '%';
+  }
+  function setZoom(value) {
+    zoom = clamp(value, .5, 4);
+    layout();
+    for (const view of [$('sourceView'), $('resultView')]) {
+      view.scrollLeft = (view.scrollWidth - view.clientWidth) / 2;
+      view.scrollTop = (view.scrollHeight - view.clientHeight) / 2;
+    }
+  }
+  const layoutWatch = new ResizeObserver(layout);
+  layoutWatch.observe($('sourceView'));
+  layoutWatch.observe($('resultView'));
+  $('zoomOut').onclick = () => setZoom(zoom / 1.25);
+  $('zoomIn').onclick = () => setZoom(zoom * 1.25);
+  $('fit').onclick = () => setZoom(1);
+
+  function classify() {
+    const pixels = ctx(source, true).getImageData(0, 0, source.width, source.height).data;
+    let colored = 0, dark = 0;
+    for (let i = 0; i < pixels.length; i += 32) {
+      if (pixels[i+3] < 40) continue;
+      const [r, g, b] = [pixels[i], pixels[i+1], pixels[i+2]];
+      if (Math.max(r,g,b) - Math.min(r,g,b) > 36) colored++;
+      if (Math.max(r,g,b) < 165) dark++;
+    }
+    return colored > 8 && colored >= dark * .45 ? 'color' : dark > 8 ? 'black' : 'unknown';
+  }
+  let detected = 'unknown';
+  const kind = () => $('kind').value === 'auto' ? detected : $('kind').value;
+  function controls() {
+    const active = kind();
+    $('classification').textContent = { color: '彩色印章', black: '黑色签名', unknown: '无法可靠识别，可框选或手动指定类型' }[active];
+    $('ink').disabled = editing || active !== 'black';
+    $('color').disabled = editing || active !== 'color';
+    $('extract').disabled = editing || active === 'unknown';
+    for (const id of ['import','crop','sample','kind']) $(id).disabled = editing;
+    for (const node of document.querySelectorAll('[data-turn],#angle,#degrees,#eraser')) node.disabled = editing || !master;
+    estimate();
+  }
+  function showSource(image) {
+    source.getContext('2d', { willReadFrequently:true });
+    copy(source, image);
+    $('sourceSize').textContent = dimensions(source);
+    detected = classify();
+    $('kind').value = 'auto';
+    master = null;
+    angle = 0;
+    renderResult();
+  }
+  function inkBounds(image) {
+    const data = ctx(image, true).getImageData(0,0,image.width,image.height).data;
+    let left = image.width, top = image.height, right = 0, bottom = 0;
+    for (let y = 0; y < image.height; y++) {
+      for (let x = 0; x < image.width; x++) {
+        if (data[(y * image.width + x) * 4 + 3] < 12) continue;
+        left = Math.min(left,x); top = Math.min(top,y);
+        right = Math.max(right,x+1); bottom = Math.max(bottom,y+1);
+      }
+    }
+    return right > left && bottom > top ? [left, top, right-left, bottom-top] : null;
+  }
+  // 浏览器演示使用轻量分离，仅用于呈现提取界面状态。
+  function extract() {
+    const mode = kind();
+    if (mode === 'unknown') return;
+    const layer = canvas(source.width, source.height);
+    const layerCtx = ctx(layer, true);
+    layerCtx.drawImage(source,0,0);
+    const image = layerCtx.getImageData(0,0,layer.width,layer.height);
+    const d = image.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const max = Math.max(r,g,b), min = Math.min(r,g,b);
+      if (mode === 'color') {
+        const strength = clamp((max-min-27) / ($('color').checked ? 99 : 123),0,1);
+        d[i+3] *= strength;
+      } else {
+        const strength = clamp((220-max) / ($('ink').checked ? 157 : 195),0,1);
+        d[i] = d[i+1] = d[i+2] = 25;
+        d[i+3] *= strength;
+      }
+    }
+    layerCtx.putImageData(image,0,0);
+    const box = inkBounds(layer);
+    master = box ? canvas(box[2],box[3]) : null;
+    if (master) ctx(master, true).drawImage(layer,...box,0,0,master.width,master.height);
+    angle = 0;
+    renderResult();
+    say(master ? '已生成透明结果' : '当前区域没有可预览的墨迹，请调整选区或处理类型');
+  }
+  function renderResult() {
+    $('angle').value = $('degrees').value = angle;
+    result.hidden = !master;
+    $('empty').hidden = Boolean(master);
+    $('resultSize').textContent = '';
+    if (master) {
+      const theta = -angle * Math.PI / 180;
+      const c = Math.abs(Math.cos(theta)), s = Math.abs(Math.sin(theta));
+      result.width = Math.max(1,Math.ceil(master.width*c + master.height*s - 1e-9));
+      result.height = Math.max(1,Math.ceil(master.width*s + master.height*c - 1e-9));
+      const pen = ctx(result, true);
+      pen.translate(result.width/2,result.height/2);
+      pen.rotate(theta);
+      pen.drawImage(master,-master.width/2,-master.height/2);
+      pen.resetTransform();
+      $('resultSize').textContent = dimensions(result);
+    }
+    controls();
+    layout();
+  }
+  function rotation(value) {
+    if (!master || editing || !Number.isFinite(value)) return;
+    angle = clamp(value,-180,180);
+    renderResult();
+  }
+  $('angle').oninput = event => rotation(Number(event.target.value));
+  $('degrees').onchange = event => rotation(Number(event.target.value));
+  for (const button of document.querySelectorAll('[data-turn]')) {
+    button.onclick = () => rotation(Number(button.dataset.turn) ? angle + Number(button.dataset.turn) : 0);
+  }
+  $('white').onchange = event => {
+    $('resultView').classList.toggle('white', event.target.checked);
+    $('backgroundLabel').textContent = event.target.checked ? '白底预览' : '棋盘格背景';
+  };
+  $('kind').onchange = () => {
+    master = null;
+    angle = 0;
+    renderResult();
+    say('处理类型已改变，请重新提取');
+  };
+  $('ink').onchange = () => say('笔迹增强设置已改变，请重新提取');
+  $('color').onchange = () => { if (master) extract(); };
+  $('extract').onclick = extract;
+  function loadSample() {
+    importRequest++;
+    demo = true;
+    original = sample();
+    $('fileName').textContent = '合成印章样张.png';
+    showSource(original);
+    extract();
+    say('已载入合成样张 · 你也可以导入自己的图片');
+    setZoom(1);
+  }
+  async function loadFile(file) {
+    if (!file || editing) return;
+    const request = ++importRequest;
+    if (!/\.(png|jpe?g)$/i.test(file.name) || file.size > 30 * 1024 * 1024) {
+      say('请选择 30 MiB 以内的 PNG 或 JPEG 图片');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      if (request !== importRequest || editing) return;
+      const factor = Math.min(1,1600 / Math.max(image.naturalWidth,image.naturalHeight));
+      original = canvas(Math.max(1,Math.round(image.naturalWidth*factor)),Math.max(1,Math.round(image.naturalHeight*factor)));
+      ctx(original).drawImage(image,0,0,original.width,original.height);
+      demo = false;
+      $('fileName').textContent = file.name;
+      showSource(original);
+      setZoom(1);
+      say(factor < 1 ? '已导入，预览已缩至最长边 1600 px' : '已导入 · 可直接提取或先框选区域');
+    } catch {
+      if (request === importRequest) say('无法打开该图片，请换用有效的 PNG 或 JPEG');
+    } finally { URL.revokeObjectURL(url); }
+  }
+  $('import').onclick = () => $('file').click();
+  $('file').onchange = event => { loadFile(event.target.files[0]); event.target.value = ''; };
+  $('sample').onclick = loadSample;
+  const drop = $('sourceView');
+  drop.ondragover = event => { event.preventDefault(); if (!editing) drop.classList.add('dragover'); };
+  drop.ondragleave = () => drop.classList.remove('dragover');
+  drop.ondrop = event => { event.preventDefault(); drop.classList.remove('dragover'); loadFile(event.dataTransfer.files[0]); };
+
+  const cropIds = ['cropX','cropY','cropW','cropH'];
+  const cropArt = $('cropArt');
+  let cropStart;
+  function drawCrop() {
+    const [x,y,w,h] = region;
+    cropIds.forEach((id, i) => { $(id).value = region[i]; });
+    Object.assign($('selection').style,{
+      left: x/original.width*100+'%', top: y/original.height*100+'%',
+      width: w/original.width*100+'%', height: h/original.height*100+'%'
+    });
+    $('cropConfirm').disabled = !region.every(Number.isInteger) || w < 4 || h < 4 || x < 0 || y < 0 || x+w > original.width || y+h > original.height;
+  }
+  function cropScale(value) {
+    cropZoom = clamp(value,.5,4);
+    const view = $('cropView');
+    const fit = Math.min((view.clientWidth-28)/original.width,(view.clientHeight-28)/original.height);
+    cropArt.style.width = Math.max(1,original.width*fit*cropZoom)+'px';
+  }
+  function resetCrop() { region = [0,0,original.width,original.height]; drawCrop(); }
+  $('crop').onclick = () => {
+    copy($('cropCanvas'),original);
+    $('cropDialog').showModal();
+    resetCrop();
+    cropScale(1);
+  };
+  function pixelPoint(event, node, width, height) {
+    const box = node.getBoundingClientRect();
+    return [Math.round(clamp((event.clientX-box.left)/box.width,0,1)*width),
+      Math.round(clamp((event.clientY-box.top)/box.height,0,1)*height)];
+  }
+  cropArt.onpointerdown = event => {
+    if (event.button !== 0) return;
+    cropStart = pixelPoint(event,cropArt,original.width,original.height);
+    cropArt.setPointerCapture(event.pointerId);
+  };
+  cropArt.onpointermove = event => {
+    if (!cropStart) return;
+    const [x,y] = pixelPoint(event,cropArt,original.width,original.height);
+    region = [Math.min(x,cropStart[0]),Math.min(y,cropStart[1]),Math.abs(x-cropStart[0]),Math.abs(y-cropStart[1])];
+    drawCrop();
+  };
+  cropArt.onlostpointercapture = () => { cropStart = null; };
+  for (const id of cropIds) $(id).onchange = () => { region = cropIds.map(key => Number($(key).value)); drawCrop(); };
+  $('cropFit').onclick = () => cropScale(1);
+  $('cropOut').onclick = () => cropScale(cropZoom/1.25);
+  $('cropIn').onclick = () => cropScale(cropZoom*1.25);
+  $('cropView').addEventListener('wheel',event => {
+    if (!event.ctrlKey) return;
+    event.preventDefault(); cropScale(cropZoom*(event.deltaY<0?1.2:1/1.2));
+  },{passive:false});
+  $('cropReset').onclick = resetCrop;
+  $('cropCancel').onclick = () => $('cropDialog').close();
+  $('cropConfirm').onclick = () => {
+    const cropped = canvas(region[2],region[3]);
+    ctx(cropped).drawImage(original,...region,0,0,cropped.width,cropped.height);
+    $('cropDialog').close();
+    showSource(cropped);
+    say('已框选区域 · 可提取当前区域');
+  };
+
+  // 橡皮擦只改 Alpha，取消时恢复进入编辑前的结果。
+  function editControls() {
+    $('undo').disabled = !undo.length || Boolean(strokeStart);
+    $('redo').disabled = !redo.length || Boolean(strokeStart);
+    $('finish').disabled = !undo.length || Boolean(strokeStart);
+  }
+  function startEdit() {
+    editing = true;
+    beforeEdit = ctx(result,true).getImageData(0,0,result.width,result.height);
+    undo = []; redo = [];
+    $('editbar').hidden = false;
+    $('eraser').setAttribute('aria-expanded','true');
+    $('resultView').classList.add('editing');
+    controls(); editControls();
+    $('brush').focus();
+    say('拖动擦除 · 空格或抓手平移 · Ctrl＋滚轮缩放');
+  }
+  function leaveEdit() {
+    editing = false;
+    hand = false;
+    result.classList.remove('grab');
+    $('brushCursor').hidden = true;
+    $('hand').setAttribute('aria-pressed','false');
+    $('editbar').hidden = true;
+    $('eraser').setAttribute('aria-expanded','false');
+    $('resultView').classList.remove('editing');
+    controls();
+    $('eraser').focus();
+  }
+  $('eraser').onclick = startEdit;
+  $('hand').onclick = () => {
+    hand = !hand;
+    $('hand').setAttribute('aria-pressed',String(hand));
+    result.classList.toggle('grab',hand || space);
+    $('brushCursor').hidden = true;
+  };
+  function snapshot() { return ctx(result,true).getImageData(0,0,result.width,result.height); }
+  function history(from,to) {
+    if (!from.length || strokeStart) return;
+    to.push(snapshot());
+    ctx(result,true).putImageData(from.pop(),0,0);
+    editControls();
+  }
+  $('undo').onclick = () => history(undo,redo);
+  $('redo').onclick = () => history(redo,undo);
+  $('cancelEdit').onclick = () => {
+    ctx(result,true).putImageData(beforeEdit,0,0);
+    leaveEdit();
+    say('已取消橡皮擦编辑');
+  };
+  $('finish').onclick = () => {
+    const box = inkBounds(result);
+    if (!box) { say('已擦除全部墨迹，请撤销部分笔划'); return; }
+    master = canvas(box[2],box[3]);
+    ctx(master,true).drawImage(result,...box,0,0,master.width,master.height);
+    angle = 0;
+    leaveEdit(); renderResult();
+    say('橡皮擦编辑已应用');
+  };
+  function erase(from,to) {
+    const pen = ctx(result,true);
+    pen.save(); pen.globalCompositeOperation = 'destination-out';
+    pen.lineCap = 'round'; pen.lineWidth = Number($('brush').value);
+    pen.beginPath(); pen.moveTo(...from); pen.lineTo(to[0]+.01,to[1]); pen.stroke();
+    pen.restore();
+  }
+  const resultView = $('resultView');
+  result.onpointerdown = event => {
+    if (!editing || (event.button !== 0 && event.button !== 1)) return;
+    event.preventDefault();
+    result.setPointerCapture(event.pointerId);
+    if (space || hand || event.button === 1) {
+      gesture = {x:event.clientX,y:event.clientY};
+      return;
+    }
+    strokeStart = snapshot();
+    gesture = {point:pixelPoint(event,result,result.width,result.height)};
+    erase(gesture.point,gesture.point);
+    editControls();
+  };
+  result.onpointermove = event => {
+    const cursor = $('brushCursor');
+    cursor.hidden = !editing || hand || space || (gesture && !strokeStart);
+    if (!cursor.hidden) {
+      const diameter = Math.max(4, Number($('brush').value) * result.getBoundingClientRect().width / result.width);
+      Object.assign(cursor.style,{left:event.clientX+'px',top:event.clientY+'px',width:diameter+'px',height:diameter+'px'});
+    }
+    if (!gesture) return;
+    if (strokeStart) {
+      const next = pixelPoint(event,result,result.width,result.height);
+      erase(gesture.point,next);
+      gesture.point = next;
+    } else {
+      resultView.scrollBy(gesture.x-event.clientX,gesture.y-event.clientY);
+      gesture = {x:event.clientX,y:event.clientY};
+    }
+  };
+  result.onpointerleave = () => { $('brushCursor').hidden = true; };
+  function finishStroke() {
+    if (strokeStart) {
+      undo.push(strokeStart);
+      if (undo.length > 10) undo.shift();
+      redo = []; strokeStart = null;
+      editControls();
+    }
+    gesture = null;
+  }
+  result.onpointerup = result.onpointercancel = result.onlostpointercapture = finishStroke;
+  window.addEventListener('keydown',event => {
+    if (!editing || event.code !== 'Space' || /^(INPUT|BUTTON|SELECT)$/.test(event.target.tagName)) return;
+    event.preventDefault(); space = true; result.classList.add('grab'); $('brushCursor').hidden = true;
+  });
+  function releaseSpace() { space = false; result.classList.toggle('grab',hand); }
+  window.addEventListener('keyup',event => { if (event.code === 'Space') releaseSpace(); });
+  window.addEventListener('blur',releaseSpace);
+  resultView.addEventListener('wheel',event => {
+    if (event.ctrlKey) {
+      event.preventDefault(); setZoom(zoom*(event.deltaY<0?1.15:1/1.15));
+    } else if (editing && (space || event.shiftKey)) {
+      event.preventDefault();
+      resultView.scrollBy(event.shiftKey ? event.deltaY : event.deltaX,event.shiftKey ? 0 : event.deltaY);
+    }
+  },{passive:false});
+
+  const presets = {signature:[null,1.1],signature09:[null,.9],legal:[1.6,1.6],builder:[4,2.8],official:[4,4]};
+  const aspect = () => result.hidden ? 1 : result.width/result.height;
+  const rounded = n => Number(n.toFixed(4));
+  const factor = () => $('unit').value === 'cm' ? Number($('dpi').value)/2.54 : 1;
+  function estimate() {
+    const w = Math.round(Number($('width').value)*factor());
+    const h = Math.round(Number($('height').value)*factor());
+    const dpi = Number($('dpi').value);
+    const valid = dpi >= 1 && dpi <= 2400 && w >= 1 && h >= 1 && Math.max(w,h) <= 10000 && w*h <= 20000000;
+    $('estimate').textContent = valid ? `预计输出 ${w} × ${h} px` : '尺寸或 DPI 超出范围';
+    $('export').disabled = !valid || !master || editing;
+    $('formatNote').textContent = $('format').value === 'GIF' ? 'GIF 导出在此预览中仅作演示' : '等比适配，空白保留透明';
+    return valid ? [w,h] : null;
+  }
+  $('preset').onchange = () => {
+    const size = presets[$('preset').value];
+    if (size) {
+      const convert = $('unit').value === 'px' ? Number($('dpi').value)/2.54 : 1;
+      $('width').value = rounded((size[0] ?? size[1]*aspect())*convert);
+      $('height').value = rounded(size[1]*convert);
+      $('ratio').checked = true;
+    }
+    estimate();
+  };
+  $('unit').onchange = () => {
+    const pxPerCm = Number($('dpi').value)/2.54;
+    const conversion = $('unit').value === 'px' ? pxPerCm : 1/pxPerCm;
+    for (const id of ['width','height']) $(id).value = rounded(Number($(id).value)*conversion);
+    estimate();
+  };
+  for (const id of ['width','height']) $(id).oninput = () => {
+    $('preset').value = 'custom';
+    if ($('ratio').checked && Number($(id).value)>0) {
+      const other = id === 'width' ? 'height' : 'width';
+      $(other).value = rounded(Number($(id).value)*(id === 'width' ? 1/aspect() : aspect()));
+    }
+    estimate();
+  };
+  $('ratio').onchange = () => { if ($('ratio').checked) $('width').oninput(); };
+  $('dpi').oninput = $('format').onchange = estimate;
+  $('export').onclick = () => {
+    const size = estimate();
+    if (!size || !master || editing) return;
+    if ($('format').value === 'GIF') { say('已预览 GIF 导出设置 · 可切换 PNG 下载'); return; }
+    const out = canvas(...size);
+    const scale = Math.min(out.width/result.width,out.height/result.height);
+    const w = result.width*scale, h = result.height*scale;
+    ctx(out).drawImage(result,(out.width-w)/2,(out.height-h)/2,w,h);
+    const filename = demo ? 'sealkit-sample.png' : 'sealkit-result.png';
+    out.toBlob(blob => {
+      if (!blob) { say('无法生成 PNG，请缩小导出尺寸后重试'); return; }
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.download = filename;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url),1000);
+      say(`已生成 ${size[0]} × ${size[1]} px 的 PNG`);
+    },'image/png');
+  };
+
+  const frame = $('window');
+  $('minimize').onclick = () => {
+    const small = frame.classList.toggle('collapsed');
+    $('minimize').setAttribute('aria-label',small ? '展开预览' : '最小化预览');
+    $('minimize').title = small ? '展开' : '最小化';
+  };
+  $('maximize').onclick = () => {
+    frame.classList.remove('collapsed');
+    $('minimize').setAttribute('aria-label','最小化预览');
+    $('minimize').title = '最小化';
+    const large = frame.classList.toggle('max');
+    $('maximize').title = large ? '向下还原' : '最大化';
+    $('maximize').setAttribute('aria-label',large ? '还原预览尺寸' : '最大化预览');
+    $('maxGlyph').setAttribute('d',large ? 'M2 5h7v7H2ZM5 5V2h7v7H9' : 'M2 2h10v10H2Z');
+  };
+  $('close').onclick = () => { frame.hidden = true; $('restore').hidden = false; $('restore').focus(); };
+  $('restore').onclick = () => { frame.hidden = false; $('restore').hidden = true; $('close').focus(); };
+  loadSample();
+</script>
+</body>
+</html>

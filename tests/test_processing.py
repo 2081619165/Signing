@@ -157,7 +157,18 @@ class ProcessingTests(unittest.TestCase):
             self.assertEqual(classify(image)['type'],'color_seal')
             b=io.BytesIO();image.save(b,format='PNG');s=Session()
             self.assertEqual(s.load('seal.png',b.getvalue())['classification']['type'],'color_seal')
-            s.process();a=np.asarray(s.result)
+            self.assertFalse(s.process()['sharpen']['enabled'])
+            base=np.array(s.result)
+            self.assertTrue(s.set_color_enhancement(True)['sharpen']['applied'])
+            a=np.array(s.result)
+            np.testing.assert_array_equal(a[...,3]>0,base[...,3]>0)
+            self.assertGreater(int(a[...,3].sum()),int(base[...,3].sum()))
+            s.set_color_enhancement(True);np.testing.assert_array_equal(np.asarray(s.result),a)
+            s.rotate_result(90);s.set_color_enhancement(False)
+            np.testing.assert_array_equal(np.asarray(s.result),np.rot90(base))
+            s.rotate_result(0);np.testing.assert_array_equal(np.asarray(s.result),base)
+            s.process('off',color_enhance=True)
+            np.testing.assert_array_equal(np.asarray(s.result),a)
             self.assertTrue(((a[...,3]>0)&(a[...,3]<255)).any())
             with tempfile.TemporaryDirectory(dir=ROOT/'.local-tests') as folder:
                 for kind in ('png','gif'):
@@ -460,6 +471,47 @@ class ProcessingTests(unittest.TestCase):
         self.assertLessEqual(report['background_sample_leakage'],.01)
         self.assertGreaterEqual(report['strong_retention'],.98)
 
+    def test_color_enhancement_protects_weak_and_isolated_pixels(self):
+        from sharpen import enhance_color_ink
+        image=Image.new('RGBA',(12,12),(201,60,40,0))
+        draw=ImageDraw.Draw(image)
+        draw.line((2,4,9,4),fill=(201,60,40,55),width=1)
+        draw.line((2,5,9,5),fill=(201,60,40,7),width=1)
+        draw.point((10,10),fill=(201,60,40,90))
+        result,report=enhance_color_ink(image)
+        self.assertTrue(report['applied'])
+        self.assertGreater(result.getpixel((4,4))[3],55)
+        before,after=np.asarray(image),np.asarray(result)
+        protected=(before[...,3]<8);protected[10,10]=True
+        np.testing.assert_array_equal(after[protected],before[protected])
+        self.assertLessEqual(abs(result.convert('HSV').getpixel((4,4))[0]-
+                                 image.convert('HSV').getpixel((4,4))[0]),1)
+        pale=Image.new('RGBA',(24,8))
+        draw=ImageDraw.Draw(pale)
+        draw.line((2,4,20,4),fill=(201,60,40,10))
+        draw.point((1,1),fill=(201,60,40,10))
+        enhanced,_=enhance_color_ink(pale)
+        self.assertGreater(enhanced.getpixel((10,4))[3],10)
+        self.assertEqual(enhanced.getpixel((1,1)),pale.getpixel((1,1)))
+
+    def test_color_enhancement_prioritizes_muted_translucent_ink(self):
+        from sharpen import enhance_color_ink
+        for muted,vivid in (((205,125,130),(205,20,33)),((125,145,205),(20,65,205))):
+            image=Image.new('RGBA',(24,8))
+            draw=ImageDraw.Draw(image)
+            for x,color,alpha in ((1,muted,96),(9,vivid,96),(17,vivid,230)):
+                draw.rectangle((x,2,x+4,6),fill=(*color,alpha))
+            result,_=enhance_color_ink(image)
+            old=image.convert('HSV')
+            new=result.convert('HSV')
+            hs=[old.getpixel((x,4)) for x in (2,10,18)]
+            adjusted=[new.getpixel((x,4)) for x in (2,10,18)]
+            for (hue,_,_),(new_hue,_,_) in zip(hs,adjusted):
+                self.assertLessEqual(min(abs(hue-new_hue),256-abs(hue-new_hue)),1)
+            self.assertGreater(adjusted[0][1]-hs[0][1],adjusted[1][1]-hs[1][1])
+            self.assertGreater(hs[0][2]-adjusted[0][2],hs[2][2]-adjusted[2][2])
+            self.assertGreater(result.getpixel((2,4))[3]-96,result.getpixel((18,4))[3]-230)
+
     def test_eraser_cancel_commit_rotate_export_and_reset(self):
         import base64
         for color in ((190,25,40),(40,65,185),(20,20,20)):
@@ -473,7 +525,7 @@ class ProcessingTests(unittest.TestCase):
             session=bridge._session=Session()
             session.load('synthetic.png',data.getvalue())
             kind='black_signature' if color[0]==color[1] else 'color_seal'
-            session.process('off',kind)
+            session.process('standard',kind,color_enhance=True)
             original=session.result
             before=np.array(original)
             edit=bridge.begin_erasure()
@@ -498,6 +550,9 @@ class ProcessingTests(unittest.TestCase):
             expected=before.copy()
             expected[80:,:,3]=0
             np.testing.assert_array_equal(np.array(session.result),expected)
+            if kind=='color_seal':
+                self.assertFalse(bridge.set_color_enhancement(False)['ok'])
+                np.testing.assert_array_equal(np.array(session.result),expected)
             session.rotate_result(-90)
             np.testing.assert_array_equal(np.array(session.result),np.array(Image.fromarray(expected).transpose(Image.Transpose.ROTATE_270)))
             session.rotate_result(0)
@@ -513,7 +568,11 @@ class ProcessingTests(unittest.TestCase):
                     with Image.open(path) as exported,Image.open(reference_path) as expected_export:
                         np.testing.assert_array_equal(np.asarray(exported.convert('RGBA')),
                                                       np.asarray(expected_export.convert('RGBA')))
-            session.process('off',kind)
+            if kind=='color_seal':
+                self.assertTrue(bridge.set_color_enhancement(False,True)['ok'])
+                self.assertEqual(session.rotation,0)
+                self.assertFalse(session.color_edited)
+            session.process('standard',kind,color_enhance=True)
             np.testing.assert_array_equal(np.array(session.result),before)
             session.load('new.png',data.getvalue())
             self.assertIsNone(session.result)

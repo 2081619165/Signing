@@ -59,7 +59,9 @@ const resultHeading=document.getElementById('resultbg').previousElementSibling;
 resultHeading.classList.add('importheading');
 resultHeading.append(eraserButton);
 const workstatus=document.getElementById('workstatus');
+const inkEnhance=document.getElementById('enhance'),colorEnhance=document.getElementById('colorEnhance');
 let busy=false,hasInput=false,hasResult=false,inputType="uncertain";
+let erasureApplied=false,resultType=null,colorWarning='';
 function effectiveType(){return document.getElementById('kind').value==='auto'?inputType:document.getElementById('kind').value;}
 function identify(r){document.getElementById('kind').value='auto';inputType=r.classification.type;document.getElementById("identification").textContent=({black_signature:"黑色签名",color_seal:"彩色印章",uncertain:"无法可靠判断"})[inputType]+"："+r.classification.reason;processButton.textContent=inputType==="color_seal"?"提取彩色印章":inputType==="black_signature"?"提取黑色签名":"请先框选区域";}
 function updateControls(){
@@ -70,9 +72,10 @@ function updateControls(){
   eraserButton.disabled=!ready||busy||!hasResult;
   document.querySelectorAll('.export-settings input,.export-settings select').forEach(e=>e.disabled=busy);
   document.getElementById('kind').disabled=busy||!hasInput;
-  document.getElementById('enhance').disabled=busy||effectiveType()!=='black_signature';
+  inkEnhance.disabled=!ready||busy||!hasInput||effectiveType()!=='black_signature';
+  colorEnhance.disabled=!ready||busy||!hasInput||effectiveType()!=='color_seal';
 }
-function clearResult(){rotationApplied=0;setRotationControls(0);hasResult=false;previewBaseSize=previewCanvasSize=null;resultViewport.removeAttribute('tabindex');processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
+function clearResult(){rotationApplied=0;setRotationControls(0);hasResult=false;erasureApplied=false;resultType=null;colorWarning='';previewBaseSize=previewCanvasSize=null;resultViewport.removeAttribute('tabindex');processed.removeAttribute('src');document.getElementById('exportstatus').textContent='未导出';sizeValid=false;sizeVersion++;document.getElementById('estimated').textContent='处理图片后计算预计输出像素';}
 async function task(action){
  if(busy||!ready)return;
  busy=true;updateControls();
@@ -87,9 +90,11 @@ openButton.addEventListener('click',()=>task(async()=>{
  if(reply.cancelled)workstatus.textContent='已取消，请重新导入';
 }));
 processButton.addEventListener('click',()=>task(async()=>{
+ if(erasureApplied&&!window.confirm('重新提取将覆盖已完成的橡皮擦编辑，继续吗？'))return;
  clearResult();workstatus.textContent='正在提取，请稍候…';
- const r=check(await window.pywebview.api.process_image(document.getElementById('enhance').checked ? 'standard' : 'off',document.getElementById('kind').value));
- displayResult(r,true);hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。笔迹增强：'+r.sharpen.reason;
+ const r=check(await window.pywebview.api.process_image(inkEnhance.checked?'standard':'off',document.getElementById('kind').value,colorEnhance.checked));
+ resultType=r.result_type;colorWarning=r.color_report?.quality_warning||'';
+ displayResult(r,true);hasResult=true;contentRatio=r.content_size[0]/r.content_size[1];if(preset.value.startsWith('signature'))applyPreset();scheduleEstimate();workstatus.textContent='处理完成，可导出。'+(resultType==='color_seal'?'色彩增强：':'笔迹增强：')+r.sharpen.reason;
 }));
 exportButton.addEventListener('click',()=>task(async()=>{
  const label=document.getElementById('exportstatus');label.textContent='等待保存…';
@@ -163,10 +168,26 @@ document.getElementById('crop').addEventListener('click',()=>{
  task(async()=>{trace('calling_python');try{const reply=await window.pywebview.api.select_region(request);trace('python_returned',{ok:reply.ok,cancelled:!!reply.cancelled});const r=check(reply);if(r.cancelled)return;original.src=r.preview;identify(r);clearResult();workstatus.textContent='已框选，已重新识别区域';}catch(e){trace('request_failed');throw e;}});
 });
 
-// 开关变化清除旧结果，确保预览和导出使用同一增强设置。
-document.getElementById('enhance').addEventListener('change',()=>{clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});
+// 设置变化时保留已擦除结果，重新提取前再确认覆盖。
+inkEnhance.addEventListener('change',()=>{if(!erasureApplied)clearResult();workstatus.textContent='增强设置已改变，请重新提取';updateControls();});
+colorEnhance.addEventListener('change',()=>{
+ if(!hasResult||resultType!=='color_seal')return;
+ const enabled=colorEnhance.checked;
+ if(erasureApplied&&!window.confirm('切换色彩增强将覆盖已完成的橡皮擦编辑并重置旋转。继续吗？')){
+  colorEnhance.checked=!enabled;return;
+ }
+ task(async()=>{
+  sizeVersion++;clearTimeout(estimateTimer);
+  try{
+   const r=check(await window.pywebview.api.set_color_enhancement(enabled,erasureApplied));
+   erasureApplied=false;previewBaseSize=r.base_canvas_size;
+   setRotationControls(r.angle);showRotation(r);
+   workstatus.textContent='色彩增强：'+r.sharpen.reason+(colorWarning?'；'+colorWarning:'');
+  }catch(e){colorEnhance.checked=!enabled;scheduleEstimate();throw e;}
+ });
+});
 
-document.getElementById('kind').addEventListener('change',()=>{clearResult();processButton.textContent=effectiveType()==='color_seal'?'提取彩色印章':effectiveType()==='black_signature'?'提取黑色签名':'请先框选区域';workstatus.textContent='处理类型已改变，请重新提取';updateControls();});
+document.getElementById('kind').addEventListener('change',()=>{if(!erasureApplied)clearResult();processButton.textContent=effectiveType()==='color_seal'?'提取彩色印章':effectiveType()==='black_signature'?'提取黑色签名':'请先框选区域';workstatus.textContent='处理类型已改变，请重新提取';updateControls();});
 
 // 串行旋转请求，仅展示最新角度；更新成功前禁止导出。
 let rotating=false,rotationTarget=0,rotationApplied=0,rotationRevision=0;
@@ -211,6 +232,7 @@ document.getElementById('resultReset').onclick=()=>rotateTransparent(0);
 
 let editingResult=false;
 function applyEditedResult(result){
+  erasureApplied=true;
   displayResult(result,true);
   rotationApplied=0;setRotationControls(0);
   contentRatio=result.content_size[0]/result.content_size[1];

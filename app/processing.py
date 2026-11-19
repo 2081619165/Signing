@@ -9,7 +9,7 @@ import threading
 from PIL import Image, ImageOps
 import numpy as np
 from algorithm import extract, classify, extract_color
-from sharpen import sharpen
+from sharpen import sharpen, enhance_color_ink
 
 # 大图只保留压缩源；解码预算按单次16字节/像素保守估算。
 MAX_FILE_BYTES=30*1024*1024
@@ -105,9 +105,11 @@ def gif_quality(alpha,mask):
 
 class Session:
     def __init__(self):
+        self.color_base=None;self.color_edited=False
         self.requires_crop=False;self.input_bytes=None;self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.lock=threading.Lock();self.original=None;self.result=None;self.source=None;self.source_name=None
 
     def load(self, name, data, source=None):
+        self.color_base=None;self.color_edited=False
         self.requires_crop=False;self.input_bytes=None;self.base_result=None;self.rotation=0;self.full=None;self.crop_box=None;self.original=None;self.result=None;self.source=None;self.source_name=None
         if Path(name).suffix.lower() not in {'.png','.jpg','.jpeg'}:raise ValueError('仅支持PNG/JPG/JPEG')
         if len(data)>MAX_FILE_BYTES:raise ValueError('图片超过30MB')
@@ -150,6 +152,7 @@ class Session:
         response=dict(preview=preview(edited),canvas_size=edited.size,content_size=[box[2]-box[0],box[3]-box[1]])
         # 当前方向成为新的旋转起点，原图与原提取对象均未就地修改。
         self.base_result=self.result=edited
+        self.color_edited=self.color_base is not None
         self.rotation=0
         return response
 
@@ -158,11 +161,26 @@ class Session:
         import math
         if self.base_result is None or self.result is None:raise ValueError('请先成功提取')
         if isinstance(angle,bool) or not isinstance(angle,(int,float)) or not -180<=angle<=180:raise ValueError('旋转角度需在-180至180度')
-        rotated=self.base_result.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else self.base_result.copy()
-        box=rotated.getbbox()
-        response=dict(preview=preview(rotated),canvas_size=rotated.size,content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
+        rotated,response=self._rotation(self.base_result,angle)
         self.result=rotated;self.rotation=angle
         return response
+
+    @staticmethod
+    def _rotation(base,angle):
+        rotated=base.rotate(angle,resample=Image.Resampling.BICUBIC,expand=True,fillcolor=(0,0,0,0)) if angle else base
+        box=rotated.getbbox()
+        return rotated,dict(preview=preview(rotated),canvas_size=rotated.size,content_size=[box[2]-box[0],box[3]-box[1]],angle=angle)
+
+    def set_color_enhancement(self, enabled, discard_edits=False):
+        if type(enabled) is not bool or type(discard_edits) is not bool:raise ValueError('无效的色彩增强设置')
+        if self.color_base is None or self.result is None:raise ValueError('请先提取彩色印章')
+        if self.color_edited and not discard_edits:raise ValueError('请确认覆盖已完成的橡皮擦编辑')
+        base,report=enhance_color_ink(self.color_base,enabled)
+        angle=0 if self.color_edited else self.rotation
+        result,response=self._rotation(base,angle)
+        self.base_result,self.result,self.rotation=base,result,angle
+        self.color_edited=False
+        return dict(response,base_canvas_size=base.size,sharpen=report)
 
     def validate_crop(self, box):
         # 坐标属于EXIF归正后的原图；验证完成后才修改会话。
@@ -184,11 +202,13 @@ class Session:
         # 预览和分类成功后一次提交，失败不留下半更新的状态。
         image_preview=preview(cropped)
         identification=classify(cropped)
+        self.color_base=None;self.color_edited=False
         self.base_result=None;self.rotation=0;self.requires_crop=False;self.original=cropped;self.crop_box=list(coords);self.result=None
         return dict(preview=image_preview,box=self.crop_box,classification=identification,requires_crop=False,
                     source_crop_size=[coords[2]-coords[0],coords[3]-coords[1]],work_size=list(cropped.size))
 
-    def process(self, enhance='standard', kind='auto', diagnostic=None):
+    def process(self, enhance='standard', kind='auto', diagnostic=None, color_enhance=False):
+        self.color_base=None;self.color_edited=False
         self.base_result=None;self.rotation=0;self.result=None
         if self.original is None:raise ValueError('请先导入图片')
         from time import perf_counter
@@ -247,11 +267,17 @@ class Session:
             if n<=1 or supported<12 or density>density_limit:
                 raise ValueError('未检测到有效彩色主体或背景残留过多，请重新框选')
         if not result.getbbox():raise ValueError('未检测到有效签名笔画，请换图检查')
-        result,report=(result,dict(reason=color_report.get('quality_warning','彩色保色处理，不应用黑签增强'))) if color else sharpen(result,enabled=enhance)
-        self.result=result;self.base_result=result.copy()
+        if color:
+            self.color_base=result
+            result,report=enhance_color_ink(result,enabled=color_enhance)
+        else:
+            result,report=sharpen(result,enabled=enhance)
+        if color and color_report.get('quality_warning'):
+            report['reason']+='；'+color_report['quality_warning']
+        self.result=result;self.base_result=result if color else result.copy()
         log('success',chosen=chosen)
         box=result.getbbox()
-        return dict(preview=preview(result),canvas_size=result.size,sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]],color_report=color_report)
+        return dict(preview=preview(result),canvas_size=result.size,sharpen=report,content_size=[box[2]-box[0],box[3]-box[1]],color_report=color_report,result_type=chosen)
 
     def dimensions(self, settings=None):
         if self.result is None:raise ValueError('请先成功处理图片')

@@ -1,4 +1,4 @@
-"""黑色签名 Alpha 自然增强；不改变灰底提取器。"""
+"""提取后的签名与彩章增强。"""
 import cv2
 import numpy as np
 from PIL import Image
@@ -61,4 +61,44 @@ def sharpen(image, enabled='standard'):
     rgba[...,3]=result
     report.update(applied=bool(np.any(result!=old)),reason='连续笔迹加深',
                   changed_pixels=int((result!=old).sum()),support_equal=bool(np.array_equal(old>0,result>0)))
+    return Image.fromarray(rgba),report
+
+
+def enhance_color_ink(image, enabled=True):
+    """保守加深现有彩墨，维持颜色比例和透明像素范围。"""
+    report=dict(enabled=enabled,applied=False,fallback=False)
+    if not report['enabled']:
+        report['reason']='关闭增强'
+        return image,report
+    rgba=np.asarray(image).copy()
+    old=rgba[...,3]
+    rgb=rgba[...,:3]
+    value=rgb.max(2)
+    minimum=rgb.min(2)
+    chroma=value-minimum
+    # 极弱像素、近中性色以及孤立小点保持原样；不扩展轮廓。
+    confidence=np.clip((old.astype(np.float32)-8)/64,0,1)
+    _,labels,stats,_=cv2.connectedComponentsWithStats((old>0).astype('uint8'),connectivity=8)
+    areas=stats[:,cv2.CC_STAT_AREA][labels]
+    # 低 Alpha 像素须有邻域和连通域支持，才给予少量额外增益。
+    weak_support=cv2.boxFilter((old>=9).astype('uint8'),-1,(3,3),normalize=False,borderType=cv2.BORDER_CONSTANT)
+    coherent=(old>=9)&(areas>=16)&(weak_support>=3)
+    confidence=np.maximum(confidence,np.float32(.20)*coherent)
+    confidence*=np.clip((chroma.astype(np.float32)-16)/64,0,1)
+    confidence[areas<=3]=0
+    alpha=old.astype(np.float32)/255
+    # 低饱和度和半透明笔画有更大增益，鲜艳且接近不透明的区域少加深。
+    muted=minimum.astype(np.float32)/np.maximum(value,1)
+    translucent=1-alpha
+    mapped=1-np.power(translucent,1+confidence*(.65+.85*translucent+.45*muted))
+    boosted=np.maximum(old,np.rint(mapped*255).astype(np.uint8))
+    # 同比增加与最大通道的差值，再温和压低亮度，保持原色相。
+    gain=np.minimum(confidence*(.18+.95*muted),minimum/np.maximum(chroma,1))
+    saturated=rgb-(value[...,None]-rgb)*gain[...,None]
+    depth=confidence*(.025+.11*translucent+.07*muted)
+    darker=np.rint(saturated*(1-depth[...,None])).astype(np.uint8)
+    applied=bool(np.any(boosted!=old) or np.any(darker!=rgb))
+    old[:]=boosted
+    rgb[:]=darker
+    report.update(applied=applied,reason='彩色笔迹加深' if applied else '彩色笔迹无需增强')
     return Image.fromarray(rgba),report
